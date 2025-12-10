@@ -372,6 +372,89 @@ Module Bottles.
       lia.                              (* Transitivity with IH. *)
   Qed.
 
+  (** ----- Dual results: passed_around is monotonically increasing ----- *)
+
+  (* monotonic_increasing: A function f is monotonic increasing in passed_around. *)
+  (* As the index increases, passed_around can only stay same or increase. *)
+  Definition monotonic_increasing (f : nat -> State)  (* A function from indices to states. *)
+    : Prop                              (* Returns a proposition. *)
+    := forall i j,                      (* For all indices i and j... *)
+       i <= j ->                        (* ...if i ≤ j... *)
+       passed_around (f i) <= passed_around (f j).  (* ...then passed at i ≤ passed at j. *)
+
+  (* step_passed_nondecreasing: A single step never decreases passed_around. *)
+  (* Bottles passed either increase by 1 or stay same (at 0 on_wall). *)
+  Lemma step_passed_nondecreasing
+    : forall s,                         (* For any state s... *)
+      passed_around s <= passed_around (step s).  (* ...step doesn't decrease passed. *)
+  Proof.
+    intros [w p st].                    (* Destruct s into components. *)
+    unfold step.                        (* Expand step definition. *)
+    simpl.                              (* Simplify projection. *)
+    destruct w.                         (* Case split on w. *)
+    - apply Nat.le_refl.                (* w = 0: p ≤ p. *)
+    - apply Nat.le_succ_diag_r.         (* w = S k: p ≤ S p. *)
+  Qed.
+
+  (* no_bottles_lost: Running never decreases passed_around. *)
+  (* Generalization of step_passed_nondecreasing to multiple steps. *)
+  Theorem no_bottles_lost
+    : forall s fuel,                    (* For any state s and fuel... *)
+      passed_around s <= passed_around (run fuel s).  (* ...running doesn't decrease passed. *)
+  Proof.
+    intros s fuel.                      (* Introduce s and fuel. *)
+    revert s.                           (* Generalize s for induction. *)
+    induction fuel.                     (* Induction on fuel. *)
+    - intro s.                          (* Base: fuel = 0. *)
+      simpl.                            (* run 0 s = s. *)
+      apply Nat.le_refl.                (* passed_around s ≤ passed_around s. *)
+    - intro s.                          (* Inductive: fuel = S k. *)
+      simpl.                            (* run (S k) s = run k (step s). *)
+      pose proof (IHfuel (step s)) as IH.  (* Apply IH to step s. *)
+      pose proof (step_passed_nondecreasing s) as Hstep.  (* step s has ≥ passed. *)
+      lia.                              (* Transitivity: s ≤ step s ≤ run k (step s). *)
+  Qed.
+
+  (* passed_run_step: Running from step s has ≥ passed than running from s. *)
+  (* Key lemma for proving trajectory monotonicity. *)
+  Lemma passed_run_step
+    : forall fuel s,                    (* For any fuel and state s... *)
+      passed_around (run fuel s) <= passed_around (run fuel (step s)).  (* ...starting higher stays higher. *)
+  Proof.
+    induction fuel.                     (* Induction on fuel. *)
+    - intro s.                          (* Base: fuel = 0. *)
+      simpl.                            (* run 0 _ = identity. *)
+      apply step_passed_nondecreasing.  (* step s ≥ s in passed_around. *)
+    - intro s.                          (* Inductive: fuel = S k. *)
+      simpl.                            (* run (S k) s = run k (step s). *)
+      apply IHfuel.                     (* Apply IH. *)
+  Qed.
+
+  (* run_succ_passed_ge: One more step means ≥ passed_around. *)
+  (* run (S fuel) s has at least as many passed as run fuel s. *)
+  Lemma run_succ_passed_ge
+    : forall fuel s,                    (* For any fuel and state s... *)
+      passed_around (run fuel s) <= passed_around (run (S fuel) s).  (* ...more steps = more passed. *)
+  Proof.
+    intros fuel s.                      (* Introduce fuel and s. *)
+    simpl.                              (* run (S fuel) s = run fuel (step s). *)
+    apply passed_run_step.              (* Apply the previous lemma. *)
+  Qed.
+
+  (* trajectory_passed_monotonic: The trajectory from any state is monotonic increasing in passed. *)
+  (* Main theorem: as we progress through the song, passed_around only increases. *)
+  Theorem trajectory_passed_monotonic
+    : forall s,                         (* For any starting state s... *)
+      monotonic_increasing (trajectory s).  (* ...its trajectory is monotonic in passed. *)
+  Proof.
+    intros s i j Hij.                   (* Introduce s, i, j, and proof that i ≤ j. *)
+    unfold trajectory.                  (* Expand: need passed (run i s) ≤ passed (run j s). *)
+    induction Hij.                      (* Induction on the proof that i ≤ j. *)
+    - apply Nat.le_refl.                (* Base: i = j, so equal. *)
+    - pose proof (run_succ_passed_ge m s) as Hsucc.  (* run (S m) s ≥ run m s. *)
+      lia.                              (* Transitivity with IH. *)
+  Qed.
+
   (** ===================================================================== *)
   (** PART V: REACHABILITY                                                  *)
   (** ===================================================================== *)
@@ -1988,11 +2071,12 @@ Module Bottles.
   Qed.
 
   (** ===================================================================== *)
-  (** PART XI: BISIMULATION                                                 *)
+  (** PART XI: BISIMULATION AND TRAJECTORY-SONG CORRESPONDENCE              *)
   (** ===================================================================== *)
-  (** We prove a bisimulation-style theorem: the state machine execution    *)
-  (** corresponds exactly to counting down bottles. Each step decreases     *)
-  (** on_wall by 1 until we reach 0.                                        *)
+  (** We prove bisimulation-style theorems: the state machine execution     *)
+  (** corresponds exactly to counting down bottles, and each step through   *)
+  (** the state machine produces the verse at the corresponding position    *)
+  (** in the song.                                                          *)
   (** ===================================================================== *)
 
   (* run_on_wall_aux: Helper relating run to on_wall decrease. *)
@@ -2033,13 +2117,7 @@ Module Bottles.
     apply run_on_wall_aux.              (* Apply the helper lemma. *)
   Qed.
 
-  (** ===================================================================== *)
-  (** PART XIII: TRAJECTORY-SONG CORRESPONDENCE                             *)
-  (** ===================================================================== *)
-  (** The final theorem: the state machine trajectory corresponds exactly   *)
-  (** to the song. Each step through the state machine produces the verse   *)
-  (** at the corresponding position in the song.                            *)
-  (** ===================================================================== *)
+  (** ----- Trajectory-Song Correspondence ----- *)
 
   (* state_verse_consistent: A state has valid bounds for verse generation. *)
   Definition state_verse_consistent (s : State)  (* Takes a state. *)
@@ -2164,7 +2242,96 @@ Module Bottles.
   Qed.
 
   (** ===================================================================== *)
-  (** PART XIV: THE SONG ITSELF                                             *)
+  (** PART XII: PARAMETRICITY                                               *)
+  (** ===================================================================== *)
+  (** Some theorems hold for ANY starting count n, while others require     *)
+  (** n ≤ 99 for string parsing reasons. We make this distinction explicit. *)
+  (** ===================================================================== *)
+
+  (** ----- Theorems that hold for ANY n ----- *)
+
+  (* general_termination: The song terminates for ANY starting count. *)
+  (* No bound on n required—the state machine always reaches terminal. *)
+  Theorem general_termination
+    : forall n,                         (* For ANY natural number n... *)
+      terminal (run n (initial n)).     (* ...n steps from initial n is terminal. *)
+  Proof.
+    intro n.                            (* Introduce n (no bound needed). *)
+    pose proof (sufficient_fuel_reaches_terminal (initial n)) as H.  (* Get termination. *)
+    unfold initial in H.                (* Expand initial. *)
+    simpl in H.                         (* on_wall {| on_wall := n; ... |} = n. *)
+    exact H.                            (* Exactly what we need. *)
+  Qed.
+
+  (* general_conservation: Conservation holds for ANY starting count. *)
+  (* Bottles are conserved regardless of how many we start with. *)
+  Theorem general_conservation
+    : forall n s,                       (* For ANY n and state s... *)
+      Reachable (initial n) s ->        (* ...if s is reachable from initial n... *)
+      on_wall s + passed_around s = n.  (* ...then bottles are conserved. *)
+  Proof.
+    intros n s Hreach.                  (* Introduce n, s, and reachability. *)
+    apply conservation_law.             (* Use the general conservation law. *)
+    exact Hreach.                       (* Provide the reachability proof. *)
+  Qed.
+
+  (* general_invariant: The invariant holds for ANY starting count. *)
+  (* This is the most fundamental property—no bounds needed. *)
+  Theorem general_invariant
+    : forall n fuel,                    (* For ANY n and fuel... *)
+      invariant (run fuel (initial n)). (* ...the invariant holds after running. *)
+  Proof.
+    intros n fuel.                      (* Introduce n and fuel. *)
+    apply run_preserves_invariant.      (* Use invariant preservation. *)
+    apply initial_satisfies_invariant.  (* Initial state satisfies invariant. *)
+  Qed.
+
+  (* general_all_bottles_passed: All bottles get passed for ANY n. *)
+  (* At termination, passed_around equals the starting count. *)
+  Theorem general_all_bottles_passed
+    : forall n,                         (* For ANY natural number n... *)
+      passed_around (run n (initial n)) = n.  (* ...all n bottles get passed. *)
+  Proof.
+    intro n.                            (* Introduce n. *)
+    apply all_bottles_passed_at_end.    (* Use the general theorem. *)
+  Qed.
+
+  (** ----- Theorems requiring n ≤ 99 ----- *)
+
+  (* The following theorems require n ≤ 99 because they depend on:         *)
+  (* 1. String parsing: nat_to_string_to_nat uses computation bounded by n *)
+  (* 2. Verse injectivity: proved by brute-force case analysis up to 99    *)
+  (* 3. leading_nat extraction: requires digits to fit in computable range *)
+  (*                                                                       *)
+  (* These theorems ARE provable for larger n, but would require:          *)
+  (* - More sophisticated string parsing proofs                            *)
+  (* - General injectivity arguments instead of case analysis              *)
+  (* For pedagogical clarity, we stick to the classic 99-bottle bound.     *)
+
+  (* bounded_verse_injectivity: Different counts give different verses. *)
+  (* Requires n ≤ 99 for the leading_nat extraction to compute. *)
+  Theorem bounded_verse_injectivity
+    : forall start n1 n2,               (* For any start and counts... *)
+      n1 <= 99 ->                       (* ...if n1 is bounded... *)
+      n2 <= 99 ->                       (* ...and n2 is bounded... *)
+      verse start n1 = verse start n2 ->  (* ...and verses are equal... *)
+      n1 = n2.                          (* ...then counts are equal. *)
+  Proof.
+    exact verse_inj.                    (* This is just verse_inj. *)
+  Qed.
+
+  (* bounded_song_NoDup: The song has no duplicate verses. *)
+  (* Requires n ≤ 99 because it depends on verse injectivity. *)
+  Theorem bounded_song_NoDup
+    : forall n,                         (* For any n... *)
+      n <= 99 ->                        (* ...if bounded... *)
+      List.NoDup (full_song n).         (* ...the song has no duplicates. *)
+  Proof.
+    exact full_song_all_distinct.       (* This is just full_song_all_distinct. *)
+  Qed.
+
+  (** ===================================================================== *)
+  (** PART XIII: THE SONG ITSELF                                            *)
   (** ===================================================================== *)
   (** Finally, we prove that our verified machinery produces the actual     *)
   (** song. Each theorem below is a certificate that a specific verse       *)
@@ -2291,3 +2458,48 @@ Module Bottles.
 (** ======================================================================= *)
 
 End Bottles.
+
+(** ======================================================================= *)
+(** PART XIV: EXTRACTION                                                    *)
+(** ======================================================================= *)
+(** Coq can extract verified code to OCaml, Haskell, or Scheme. This        *)
+(** allows running the song we've proven correct. The extraction mechanism  *)
+(** preserves the computational content while discarding proofs.            *)
+(** ======================================================================= *)
+
+Require Import Extraction.             (* Load extraction machinery. *)
+Require Import ExtrOcamlBasic.         (* Basic OCaml extraction settings. *)
+Require Import ExtrOcamlString.        (* Extract Coq strings to OCaml strings. *)
+
+(* Set up extraction to produce readable OCaml code. *)
+Extraction Language OCaml.             (* Target language is OCaml. *)
+
+(* Extract key types to native OCaml equivalents for efficiency. *)
+Extract Inductive bool => "bool" [ "true" "false" ].  (* bool → bool. *)
+Extract Inductive nat => "int"         (* nat → int for efficiency. *)
+  [ "0" "(fun x -> x + 1)" ]           (* O → 0, S → increment. *)
+  "(fun fO fS n -> if n = 0 then fO () else fS (n - 1))".  (* Pattern match. *)
+
+(* The song itself: extract full_song to generate all verses. *)
+(* Usage after extraction: Bottles.full_song 99 returns the complete song. *)
+
+(* Recursive Extraction Bottles.full_song. *)
+(* Uncomment the line above to extract full_song and all dependencies. *)
+
+(* To extract to a file, use: *)
+(* Extraction "bottles.ml" Bottles.full_song. *)
+
+(* Example: Extract just the verse function for testing. *)
+(* Extraction Bottles.verse. *)
+
+(* After extraction, compile and run with: *)
+(*   ocamlopt -o bottles bottles.ml *)
+(*   ./bottles *)
+
+(* Or in the OCaml REPL: *)
+(*   #use "bottles.ml";; *)
+(*   List.iter print_endline (Bottles.full_song 99);; *)
+
+(** The extracted code is guaranteed correct by construction—it inherits   *)
+(** all the properties we proved: termination, conservation, and verse     *)
+(** correctness. The proofs are erased, but their guarantees remain.       *)
