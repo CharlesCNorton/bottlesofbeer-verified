@@ -1,7 +1,14 @@
 # Lean 4 / Lake build artifacts
-.lake/
-lake-packages/
-build/
+lean/.lake/
+lean/lake-packages/
+lean/build/
+
+# Coq build artifacts
+coq/*.vo
+coq/*.vok
+coq/*.vos
+coq/*.glob
+coq/.*.aux
 
 # Editor files
 *.olean
