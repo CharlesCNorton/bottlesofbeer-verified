@@ -1,0 +1,14 @@
+# Lean 4 / Lake build artifacts
+.lake/
+lake-packages/
+build/
+
+# Editor files
+*.olean
+*.ilean
+*.trace
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
