@@ -55,7 +55,7 @@ def terminal (s : State)  -- Takes a state to examine.
 
 /-- Decidability instance for terminal.
     This allows us to compute whether a state is terminal. -/
-instance : Decidable (terminal s) :=
+instance (s : State) : Decidable (terminal s) :=
   inferInstanceAs (Decidable (s.on_wall = 0))
 
 /-- step: Performs one verse of the song—takes one bottle down.
@@ -308,7 +308,7 @@ theorem trajectory_passed_monotonic (s : State)
     - s' = step s for some reachable s (transitive step case). -/
 inductive Reachable (s0 : State) : State → Prop where
   | refl : Reachable s0 s0
-  | step (s s' : State) : Reachable s0 s → s' = step s → Reachable s0 s'
+  | step (s : State) : Reachable s0 s → Reachable s0 (step s)
 
 /-- reachable_trans: Reachability is transitive.
     If s1 is reachable from s0 and s2 is reachable from s1,
@@ -317,7 +317,7 @@ theorem reachable_trans (s0 s1 s2 : State)
     (h1 : Reachable s0 s1) (h2 : Reachable s1 s2) : Reachable s0 s2 := by
   induction h2 with
   | refl => exact h1
-  | step s s' _ hs' ih => exact Reachable.step s s' ih hs'
+  | step s _ ih => exact Reachable.step s ih
 
 /-- reachable_run: Any state reached by run is reachable.
     This connects our fuel-based execution to the abstract reachability. -/
@@ -326,8 +326,7 @@ theorem reachable_run (fuel : Nat) (s : State) : Reachable s (run fuel s) := by
   | zero => exact Reachable.refl
   | succ k ih =>
     simp only [run]
-    have h1 : Reachable s (step s) := Reachable.step s (step s) Reachable.refl rfl
-    exact reachable_trans s (step s) (run k (step s)) h1 (ih (step s))
+    exact reachable_trans s (step s) (run k (step s)) (Reachable.step s Reachable.refl) (ih (step s))
 
 /-- reachable_preserves_invariant: Invariant holds for all reachable states.
     If we start satisfying the invariant, every reachable state does too. -/
@@ -335,9 +334,7 @@ theorem reachable_preserves_invariant (s0 s : State)
     (hinv : invariant s0) (hreach : Reachable s0 s) : invariant s := by
   induction hreach with
   | refl => exact hinv
-  | step _ s' _ hs' ih =>
-    rw [hs']
-    exact step_preserves_invariant _ ih
+  | step _ _ ih => exact step_preserves_invariant _ ih
 
 /-- reachable_terminal_exists: From any state, a terminal state is reachable.
     This is another way to state termination. -/
@@ -461,7 +458,7 @@ def verse (start n : Nat) : String :=
   | 0 =>  -- Final verse: "No more bottles... Go to the store..."
     "No more bottles of beer on the wall, no more bottles of beer. " ++
     "Go to the store and buy some more, " ++
-    natToString start ++ " bottles of beer on the wall."
+    natToString start ++ " " ++ bottleWord start ++ " of beer on the wall."
   | k + 1 =>  -- Regular verse: "N bottles... Take one down..."
     countPhrase (k + 1) ++ " of beer on the wall, " ++
     countPhrase (k + 1) ++ " of beer. " ++
@@ -525,7 +522,7 @@ theorem verse_0_uses_start (start : Nat)
     : verse start 0 =
       "No more bottles of beer on the wall, no more bottles of beer. " ++
       "Go to the store and buy some more, " ++
-      natToString start ++ " bottles of beer on the wall." := by
+      natToString start ++ " " ++ bottleWord start ++ " of beer on the wall." := by
   rfl
 
 /-- fullSongAux_length: Helper lemma for song length calculation. -/
@@ -698,9 +695,7 @@ theorem firstChar_append_left (s1 s2 : String) (c : Char) (h : s1.toList.head? =
 /-- verse_first_char_0: Verse 0 starts with 'N' (for "No more"). -/
 theorem verse_first_char_0 (start : Nat) : firstChar (verse start 0) = some 'N' := by
   simp only [verse, firstChar]
-  apply firstChar_append_left
-  apply firstChar_append_left
-  apply firstChar_append_left
+  repeat apply firstChar_append_left
   native_decide
 
 /-- natToString_first_char_digit: natToString produces strings starting with a digit.
@@ -1111,15 +1106,14 @@ theorem ninety_nine_bottles_all_distinct
 theorem conservation_law (n : Nat) (s : State) (h : Reachable (initial n) s)
     : s.on_wall + s.passed_around = n := by
   have hinv := reachable_preserves_invariant (initial n) s (initial_satisfies_invariant n) h
-  simp [invariant] at hinv
   have hst : s.starting_count = n := by
     induction h with
     | refl => simp [initial]
-    | step prev curr hprev heq ih =>
-      rw [heq, step_preserves_starting_count]
-      have hpinv := reachable_preserves_invariant (initial n) prev (initial_satisfies_invariant n) hprev
-      simp [invariant] at hpinv
-      exact ih hpinv
+    | step prev hprev ih =>
+      have hpinv := reachable_preserves_invariant (initial n) prev
+                      (initial_satisfies_invariant n) hprev
+      simp [step_preserves_starting_count, ih hpinv]
+  simp only [invariant] at hinv
   omega
 
 /-- run_on_wall_aux: Helper relating run to on_wall decrease.
@@ -1508,9 +1502,7 @@ theorem reachable_preserves_starting_count (s0 s : State)
     (hreach : Reachable s0 s) : s.starting_count = s0.starting_count := by
   induction hreach with
   | refl => rfl
-  | step prev curr _ heq ih =>
-    rw [heq, step_preserves_starting_count]
-    exact ih
+  | step prev _ ih => simp [step_preserves_starting_count, ih]
 
 /-- terminal_reachable_from_any: From any state, a terminal state is reachable. -/
 theorem terminal_reachable_from_any (s : State)

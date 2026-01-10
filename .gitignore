@@ -2,6 +2,7 @@
 lean/.lake/
 lean/lake-packages/
 lean/build/
+lean/lake-manifest.json
 
 # Coq build artifacts
 coq/*.vo
