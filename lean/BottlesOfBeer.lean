@@ -22,13 +22,15 @@
 
 namespace Bottles
 
-/- =========================================================================
-   PART I: STATE MACHINE MODEL
-   =========================================================================
-   We model the song as transitions between states. Each state tracks
-   how many bottles remain on the wall, how many have been passed
-   around, and what we started with (for the conservation invariant).
-   ========================================================================= -/
+/-! ## Part I: State Machine Model
+
+We model the song as transitions between states. Each state tracks how many
+bottles remain on the wall, how many have been passed around, and what we
+started with (for the conservation invariant).
+
+**Key insight**: A state machine is just a set of states plus a transition
+function. Here our states are triples (on_wall, passed_around, starting_count)
+and our transition is "take one down and pass it around." -/
 
 /-- State: A snapshot of the song at any moment.
     Structures in Lean bundle multiple named fields into a single type.
@@ -75,150 +77,386 @@ def invariant (s : State)  -- Takes a state to check.
     : Prop                 -- Returns a proposition.
     := s.on_wall + s.passed_around = s.starting_count  -- Conservation equation.
 
-/- =========================================================================
-   PART II: CORE SAFETY THEOREMS
-   =========================================================================
-   We prove that the invariant holds initially and is preserved by
-   each step. This "inductive invariant" pattern is fundamental to
-   proving properties of state machines and transition systems.
-   ========================================================================= -/
+/-! ## Part II: Core Safety Theorems
+
+We prove that the invariant holds initially and is preserved by each step.
+This "inductive invariant" pattern is fundamental to proving properties of
+state machines and transition systems.
+
+**The pattern**: To prove a property P holds for all reachable states:
+1. Show P holds for the initial state (base case)
+2. Show that if P holds for state s, it holds for step(s) (inductive case)
+Then P holds everywhere the machine can go. -/
 
 /-- initial_satisfies_invariant: The starting state satisfies conservation.
-    This is the "base case" of our inductive invariant argument. -/
-theorem initial_satisfies_invariant (n : Nat)  -- For any starting count n...
-    : invariant (initial n)                    -- ...the initial state satisfies the invariant.
+    This is the "base case" of our inductive invariant argument.
+
+    **Proof idea**: Unfolding definitions, we need to show n + 0 = n, which is
+    trivially true by the definition of addition on natural numbers.
+
+    **Why this matters**: This is the anchor for our inductive argument. Without
+    a valid starting point, we couldn't prove anything about reachable states. -/
+theorem initial_satisfies_invariant
+    (n : Nat)                    -- For any starting bottle count n...
+    : invariant (initial n)      -- ...the initial state satisfies the invariant.
     := by
-  simp [invariant, initial]  -- Expand definitions; n + 0 = n is trivial.
+  -- Goal: invariant (initial n)
+  -- Unfolding: (initial n).on_wall + (initial n).passed_around = (initial n).starting_count
+  -- Simplifies to: n + 0 = n, which is definitionally true.
+  simp [invariant, initial]
 
 /-- step_preserves_invariant: If a state satisfies the invariant, so does its successor.
-    This is the "inductive step"—preservation under transitions. -/
-theorem step_preserves_invariant (s : State) (h : invariant s)
-    : invariant (step s) := by
-  simp only [invariant, step] at *  -- Expand definitions everywhere.
-  cases hs : s.on_wall with         -- Case split: is on_wall zero or a successor?
-  | zero => simp [hs] at *; exact h -- w = 0: step doesn't change state.
-  | succ k => simp [hs] at *; omega -- w = S k: one bottle moves from wall to passed.
+    This is the "inductive step"—preservation under transitions.
+
+    **Proof idea**: Case split on whether on_wall is zero or positive.
+    - If zero: step is identity, so invariant trivially preserved.
+    - If positive: one bottle moves from wall to passed, sum unchanged.
+
+    **The key arithmetic**: If w + p = s and we transition to (w-1) + (p+1),
+    the sum is still s because (w-1) + (p+1) = w + p = s. -/
+theorem step_preserves_invariant
+    (s : State)          -- Given any state s...
+    (h : invariant s)    -- ...that satisfies the invariant...
+    : invariant (step s) -- ...its successor also satisfies the invariant.
+    := by
+  -- First, unfold the definitions so we can see what we're proving.
+  -- h becomes: s.on_wall + s.passed_around = s.starting_count
+  -- Goal becomes: (step s).on_wall + (step s).passed_around = (step s).starting_count
+  simp only [invariant, step] at *
+  -- Now case split on whether s.on_wall is zero or a successor.
+  -- This determines which branch of the match in `step` we take.
+  cases hs : s.on_wall with
+  | zero =>
+    -- Case: s.on_wall = 0, so step s = s (the song is over, no change).
+    -- The invariant h already says 0 + s.passed_around = s.starting_count.
+    -- After step, nothing changes, so the same equation holds.
+    simp [hs] at *
+    exact h
+  | succ k =>
+    -- Case: s.on_wall = k + 1 for some k ≥ 0.
+    -- After step: on_wall becomes k, passed_around becomes s.passed_around + 1.
+    -- We need: k + (s.passed_around + 1) = s.starting_count.
+    -- From h: (k + 1) + s.passed_around = s.starting_count.
+    -- Rearranging: k + s.passed_around + 1 = s.starting_count. QED.
+    simp [hs] at *
+    omega
 
 /-- step_preserves_starting_count: The starting count never changes.
-    This is obvious but useful as a rewrite lemma. -/
-theorem step_preserves_starting_count (s : State)
-    : (step s).starting_count = s.starting_count := by
-  simp only [step]           -- Expand the step definition.
-  cases s.on_wall <;> rfl    -- Both cases: starting_count field preserved.
+    This is obvious but useful as a rewrite lemma.
+
+    **Why we need this**: Many proofs need to know that starting_count is
+    constant throughout execution. Having an explicit lemma lets us rewrite
+    (step s).starting_count to s.starting_count automatically. -/
+theorem step_preserves_starting_count
+    (s : State)                                    -- For any state s...
+    : (step s).starting_count = s.starting_count   -- ...step preserves starting_count.
+    := by
+  -- Unfold step to see its definition.
+  simp only [step]
+  -- Case split on s.on_wall. In both cases, starting_count is unchanged.
+  -- Case 0: step returns s unchanged, so starting_count = starting_count.
+  -- Case n+1: step returns a new record with same starting_count field.
+  cases s.on_wall <;> rfl
 
 /-- step_decreases_or_terminal: Each step either terminates or makes progress.
-    This is crucial for termination: we can't loop forever. -/
-theorem step_decreases_or_terminal (s : State)
-    : terminal s ∨ (step s).on_wall < s.on_wall := by
-  cases hs : s.on_wall with          -- Case split on bottles remaining.
-  | zero => left; simp [terminal, hs]   -- w = 0: choose left disjunct (terminal).
-  | succ k => right; simp [step, hs]    -- w = S k: choose right (decreases).
+    This is crucial for termination: we can't loop forever.
+
+    **Termination argument**: This is a disjunction (OR). Either:
+    - LEFT: We're already terminal (on_wall = 0), or
+    - RIGHT: Taking a step strictly decreases on_wall.
+
+    Since on_wall is a natural number that decreases each non-terminal step,
+    we must eventually reach terminal. This is well-founded recursion. -/
+theorem step_decreases_or_terminal
+    (s : State)                                  -- For any state s...
+    : terminal s ∨ (step s).on_wall < s.on_wall  -- ...either terminal or progressing.
+    := by
+  -- Case split: is s.on_wall zero or positive?
+  cases hs : s.on_wall with
+  | zero =>
+    -- s.on_wall = 0 means we're terminal.
+    -- Choose the LEFT disjunct: terminal s.
+    left
+    -- terminal s means s.on_wall = 0, which we just established.
+    simp [terminal, hs]
+  | succ k =>
+    -- s.on_wall = k + 1 means we can take a step.
+    -- Choose the RIGHT disjunct: (step s).on_wall < s.on_wall.
+    right
+    -- After step, on_wall becomes k, and k < k + 1.
+    simp [step, hs]
 
 /-- terminal_is_fixpoint: Once terminal, step has no effect.
-    The song is over; taking another step doesn't change anything. -/
-theorem terminal_is_fixpoint (s : State) (h : terminal s)
-    : step s = s := by
-  simp only [terminal] at h  -- h says on_wall = 0.
-  simp only [step, h]        -- Rewrite and simplify.
+    The song is over; taking another step doesn't change anything.
 
-/- =========================================================================
-   PART III: EXECUTION AND TERMINATION
-   =========================================================================
-   We define a "fuel-based" execution model: run n steps and see where
-   we end up. Then we prove that sufficient fuel always reaches terminal
-   state, establishing termination of the song.
-   ========================================================================= -/
+    **Fixpoint**: A state s is a fixpoint of step if step(s) = s. Terminal
+    states are fixpoints because the match on on_wall = 0 returns s unchanged.
+
+    **Why this matters**: This ensures we don't "overshoot" terminal. Running
+    extra steps after finishing the song is harmless—we stay at the end. -/
+theorem terminal_is_fixpoint
+    (s : State)        -- For any state s...
+    (h : terminal s)   -- ...that is terminal (on_wall = 0)...
+    : step s = s       -- ...step s equals s unchanged.
+    := by
+  -- h says terminal s, which unfolds to s.on_wall = 0.
+  simp only [terminal] at h
+  -- Now simplify step using h. The match sees on_wall = 0 and returns s.
+  simp only [step, h]
+
+/-! ## Part III: Execution and Termination
+
+We define a "fuel-based" execution model: run n steps and see where we end up.
+Then we prove that sufficient fuel always reaches terminal state, establishing
+termination of the song.
+
+**Why fuel?** Lean requires all functions to terminate. By passing explicit
+"fuel" (a natural number that decreases each step), we guarantee termination
+structurally. The key theorem shows that fuel = on_wall is always sufficient. -/
 
 /-- run: Execute the state machine for a fixed number of steps.
-    This defines a recursive function; fuel decreases each call. -/
-def run (fuel : Nat)   -- Number of steps to execute.
-        (s : State)    -- Starting state.
-    : State            -- Ending state after fuel steps.
+    This defines a recursive function; fuel decreases each call.
+
+    **How it works**: run is structurally recursive on fuel. Each recursive
+    call decreases fuel by 1, guaranteeing termination. The function applies
+    `step` once, then recurses with the stepped state and decremented fuel.
+
+    **Example**: run 3 s = run 2 (step s) = run 1 (step (step s)) = step (step (step s))
+
+    **Note**: We step FIRST, then recurse. So run n s applies n steps total. -/
+def run
+    (fuel : Nat)   -- Number of steps to execute (decreases each recursive call).
+    (s : State)    -- Starting state for this batch of steps.
+    : State        -- Ending state after applying `fuel` steps to s.
     := match fuel with
-       | 0 => s                -- No fuel: return current state.
-       | n + 1 => run n (step s)  -- Fuel remaining: step once, recurse.
+       | 0 =>
+         -- Base case: no fuel left, return the current state unchanged.
+         s
+       | n + 1 =>
+         -- Recursive case: apply one step, then recurse with n remaining.
+         -- Lean sees that n < n + 1, so this terminates.
+         run n (step s)
 
 /-- run_preserves_invariant: Running any number of steps preserves the invariant.
-    By induction: base case is trivial, inductive case uses step_preserves_invariant. -/
-theorem run_preserves_invariant (fuel : Nat) (s : State) (h : invariant s)
-    : invariant (run fuel s) := by
-  induction fuel generalizing s with  -- Induction on fuel.
-  | zero => exact h                   -- Base: run 0 s = s; H already holds.
-  | succ k ih =>                      -- Inductive: run (S k) s = run k (step s).
+    By induction: base case is trivial, inductive case uses step_preserves_invariant.
+
+    **Proof technique**: This is a classic induction on the fuel parameter.
+    - Base case (fuel = 0): run 0 s = s, and we already know invariant s.
+    - Inductive case (fuel = k + 1): run (k+1) s = run k (step s).
+      By step_preserves_invariant, invariant (step s) holds.
+      By IH applied to (step s), invariant (run k (step s)) holds.
+
+    **Key insight**: The invariant is "closed under step," so it's closed under
+    any finite number of steps. This is the power of inductive invariants. -/
+theorem run_preserves_invariant
+    (fuel : Nat)         -- Number of steps to run.
+    (s : State)          -- Starting state.
+    (h : invariant s)    -- Assumption: starting state satisfies invariant.
+    : invariant (run fuel s)  -- Conclusion: ending state satisfies invariant.
+    := by
+  -- Induction on fuel. The `generalizing s` lets the IH apply to any state.
+  induction fuel generalizing s with
+  | zero =>
+    -- Base case: run 0 s = s by definition.
+    -- We need invariant s, which is exactly our hypothesis h.
+    exact h
+  | succ k ih =>
+    -- Inductive case: run (k+1) s = run k (step s) by definition.
+    -- We need invariant (run k (step s)).
+    -- By step_preserves_invariant: invariant (step s).
+    -- By IH applied to (step s): invariant (run k (step s)).
     exact ih (step s) (step_preserves_invariant s h)
 
 /-- run_preserves_starting_count: Running preserves the starting count.
-    Follows from step_preserves_starting_count by induction. -/
-theorem run_preserves_starting_count (fuel : Nat) (s : State)
-    : (run fuel s).starting_count = s.starting_count := by
+    Follows from step_preserves_starting_count by induction.
+
+    **Why this matters**: We often need to know that starting_count stays
+    constant throughout execution to connect final states back to initial. -/
+theorem run_preserves_starting_count
+    (fuel : Nat)                                   -- Number of steps.
+    (s : State)                                    -- Starting state.
+    : (run fuel s).starting_count = s.starting_count  -- starting_count unchanged.
+    := by
   induction fuel generalizing s with
-  | zero => rfl
-  | succ k ih => simp [run]; rw [ih, step_preserves_starting_count]
+  | zero =>
+    -- run 0 s = s, so starting_count is trivially preserved.
+    rfl
+  | succ k ih =>
+    -- run (k+1) s = run k (step s)
+    -- By IH: (run k (step s)).starting_count = (step s).starting_count
+    -- By step_preserves_starting_count: (step s).starting_count = s.starting_count
+    simp [run]
+    rw [ih, step_preserves_starting_count]
 
 /-- run_reaches_zero: With enough fuel equal to on_wall, we reach zero bottles.
-    This is the key lemma: fuel = on_wall is sufficient for termination. -/
-theorem run_reaches_zero (w p st : Nat)
-    : (run w { on_wall := w, passed_around := p, starting_count := st }).on_wall = 0 := by
+    This is the key lemma: fuel = on_wall is sufficient for termination.
+
+    **The key insight**: If we start with w bottles and run w steps, we end
+    with 0 bottles. Each step decreases on_wall by 1 (when positive), so
+    after exactly w steps, we've counted down to zero.
+
+    **Proof**: By induction on w. If w = 0, we're already at zero. If w = k+1,
+    one step gives us k bottles, and by IH, k more steps reach zero. -/
+theorem run_reaches_zero
+    (w p st : Nat)  -- on_wall, passed_around, starting_count
+    : (run w { on_wall := w, passed_around := p, starting_count := st }).on_wall = 0
+    := by
+  -- Induction on w (the bottle count / fuel amount).
+  -- We generalize p because it changes each step but doesn't affect the result.
   induction w generalizing p with
-  | zero => rfl                         -- Base: already at zero.
-  | succ k ih => simp [run, step]; exact ih (p + 1)  -- Step and recurse.
+  | zero =>
+    -- Base case: w = 0, so on_wall is already 0.
+    -- run 0 s = s, and s.on_wall = 0.
+    rfl
+  | succ k ih =>
+    -- Inductive case: w = k + 1.
+    -- run (k+1) s = run k (step s)
+    -- After step: on_wall becomes k, passed_around becomes p + 1.
+    -- By IH with on_wall = k: the result has on_wall = 0.
+    simp [run, step]
+    exact ih (p + 1)
 
 /-- sufficient_fuel_reaches_terminal: Starting with on_wall fuel always terminates.
-    This establishes that the song ALWAYS ends—no infinite loops possible. -/
-theorem sufficient_fuel_reaches_terminal (s : State)
-    : terminal (run s.on_wall s) := by
+    This establishes that the song ALWAYS ends—no infinite loops possible.
+
+    **The termination guarantee**: For ANY state s, if we run s.on_wall steps,
+    we reach a terminal state. This is unconditional—every execution terminates.
+
+    **Proof**: Destructure s into its fields, then apply run_reaches_zero. -/
+theorem sufficient_fuel_reaches_terminal
+    (s : State)                    -- For any state s...
+    : terminal (run s.on_wall s)   -- ...running on_wall steps reaches terminal.
+    := by
+  -- Unfold terminal to: (run s.on_wall s).on_wall = 0
   simp only [terminal]
+  -- Destructure s into { on_wall := w, passed_around := p, starting_count := st }
+  -- Then apply run_reaches_zero which proves exactly this.
   cases s with
   | mk w p st => exact run_reaches_zero w p st
 
 /-- song_terminates: The classic 99-bottle song terminates.
-    Verified by direct computation (native_decide). -/
-theorem song_terminates : terminal (run 99 (initial 99)) := by
-  native_decide  -- Lean computes this directly and verifies it's true.
+    Verified by direct computation (native_decide).
+
+    **What native_decide does**: Lean evaluates (run 99 (initial 99)).on_wall
+    at compile time and checks that it equals 0. This is a PROOF by computation—
+    if the check succeeds, the theorem is proven; if it fails, compilation fails.
+
+    **Trust**: We're not "trusting" the computation; we're using Lean's kernel
+    to verify that the computation produces the expected result. -/
+theorem song_terminates
+    : terminal (run 99 (initial 99))  -- The 99-bottle song reaches terminal.
+    := by
+  -- Let Lean compute (run 99 (initial 99)).on_wall and verify it's 0.
+  native_decide
 
 /-- all_bottles_passed_at_end: At termination, all bottles have been passed.
-    Combines invariant preservation with termination. -/
-theorem all_bottles_passed_at_end (n : Nat)
-    : (run n (initial n)).passed_around = n := by
+    Combines invariant preservation with termination.
+
+    **The connection**: We know three things at the end:
+    1. on_wall = 0 (from termination)
+    2. on_wall + passed_around = starting_count (from invariant)
+    3. starting_count = n (from run_preserves_starting_count)
+    Combining: 0 + passed_around = n, so passed_around = n.
+
+    **Why this matters**: This proves the song is "complete"—every bottle that
+    started on the wall gets passed around exactly once. -/
+theorem all_bottles_passed_at_end
+    (n : Nat)                               -- For any starting count n...
+    : (run n (initial n)).passed_around = n -- ...all n bottles are passed at the end.
+    := by
+  -- Gather our three key facts:
+  -- hinv: The invariant holds after running n steps from initial n.
   have hinv := run_preserves_invariant n (initial n) (initial_satisfies_invariant n)
+  -- hterm: After n steps, we're terminal (on_wall = 0).
   have hterm := sufficient_fuel_reaches_terminal (initial n)
+  -- hst: starting_count is still n after running.
   have hst := run_preserves_starting_count n (initial n)
+  -- Unfold all the definitions to expose the arithmetic.
   simp only [invariant, terminal, initial] at *
-  omega  -- Arithmetic: 0 + passed = n and starting = n implies passed = n.
+  -- Now we have: 0 + passed = starting, starting = n.
+  -- omega solves: passed = n.
+  omega
 
-/- =========================================================================
-   PART IV: TRAJECTORY ANALYSIS
-   =========================================================================
-   We prove that the sequence of states forms a monotonic trajectory:
-   bottles on wall never increases, bottles passed never decreases.
-   This captures the "one-way" nature of the song's progress.
-   ========================================================================= -/
+/-! ## Part IV: Trajectory Analysis
 
-/-- monotonic_decreasing: A function from Nat to State has non-increasing on_wall. -/
-def monotonic_decreasing (f : Nat → State) : Prop :=
-  ∀ i j, i ≤ j → (f j).on_wall ≤ (f i).on_wall
+We prove that the sequence of states forms a monotonic trajectory: bottles on
+wall never increases, bottles passed never decreases. This captures the
+"one-way" nature of the song's progress.
 
-/-- trajectory: The sequence of states reached by running 0, 1, 2, ... steps. -/
-def trajectory (s : State) : Nat → State :=
-  fun i => run i s
+**Monotonicity matters**: These lemmas establish that the song makes steady
+progress toward termination. You can't "un-pass" a bottle. Each step either
+decreases on_wall or leaves the state unchanged (at terminal). -/
 
-/-- step_nonincreasing: Taking a step never increases bottles on wall. -/
-theorem step_nonincreasing (s : State) : (step s).on_wall ≤ s.on_wall := by
+/-- monotonic_decreasing: A function from Nat to State has non-increasing on_wall.
+
+    **What this means**: If we look at states at times i and j with i ≤ j,
+    the later state (j) has fewer or equal bottles on wall than the earlier (i).
+    In other words, bottles never magically reappear on the wall. -/
+def monotonic_decreasing
+    (f : Nat → State)  -- A function mapping time steps to states.
+    : Prop             -- Returns a proposition (provable or not).
+    := ∀ i j,          -- For all time steps i and j...
+       i ≤ j →         -- ...if i comes before or at j...
+       (f j).on_wall ≤ (f i).on_wall  -- ...then j has ≤ bottles than i.
+
+/-- trajectory: The sequence of states reached by running 0, 1, 2, ... steps.
+
+    **Intuition**: trajectory s is an infinite sequence of states:
+    trajectory s 0 = s
+    trajectory s 1 = run 1 s = step s
+    trajectory s 2 = run 2 s = step (step s)
+    ...and so on.
+
+    This captures the complete history of the state machine's execution. -/
+def trajectory
+    (s : State)        -- Starting state.
+    : Nat → State      -- Returns a function from time to state.
+    := fun i => run i s  -- The state at time i is run i s.
+
+/-- step_nonincreasing: Taking a step never increases bottles on wall.
+
+    **The one-step guarantee**: Either on_wall stays the same (at terminal) or
+    decreases by exactly 1. It NEVER increases. This is the building block
+    for all our monotonicity results. -/
+theorem step_nonincreasing
+    (s : State)                        -- For any state s...
+    : (step s).on_wall ≤ s.on_wall     -- ...step doesn't increase on_wall.
+    := by
+  -- Case split on whether we're at zero or positive bottles.
   cases hs : s.on_wall with
-  | zero => simp [step, hs]   -- 0 → 0: no change.
-  | succ k => simp [step, hs] -- S k → k: decreases by 1.
+  | zero =>
+    -- At 0 bottles: step s = s, so on_wall unchanged. 0 ≤ 0. ✓
+    simp [step, hs]
+  | succ k =>
+    -- At k+1 bottles: step gives k bottles. k ≤ k+1. ✓
+    simp [step, hs]
 
 /-- no_bottles_created: Running never creates new bottles on wall.
-    Bottles can only decrease or stay the same. -/
-theorem no_bottles_created (s : State) (fuel : Nat)
-    : (run fuel s).on_wall ≤ s.on_wall := by
+    Bottles can only decrease or stay the same.
+
+    **The multi-step guarantee**: Extending step_nonincreasing to any number
+    of steps. No matter how many steps we take, we never end up with MORE
+    bottles than we started with.
+
+    **Proof**: By induction on fuel, using step_nonincreasing at each step. -/
+theorem no_bottles_created
+    (s : State)                        -- Starting state.
+    (fuel : Nat)                       -- Number of steps to run.
+    : (run fuel s).on_wall ≤ s.on_wall -- After running, on_wall is ≤ original.
+    := by
+  -- Induct on fuel; generalize s so IH applies to any starting state.
   induction fuel generalizing s with
-  | zero => simp [run]
+  | zero =>
+    -- run 0 s = s, so on_wall is unchanged. Trivially ≤.
+    simp [run]
   | succ k ih =>
+    -- run (k+1) s = run k (step s)
+    -- We need: (run k (step s)).on_wall ≤ s.on_wall
     simp only [run]
+    -- Use calc mode to chain inequalities:
     calc (run k (step s)).on_wall
-        ≤ (step s).on_wall := ih (step s)
-      _ ≤ s.on_wall := step_nonincreasing s
+        ≤ (step s).on_wall := ih (step s)  -- By IH: running k steps from step s
+      _ ≤ s.on_wall := step_nonincreasing s -- By step_nonincreasing
 
 /-- on_wall_run_step: Running after a step gives ≤ on_wall than running without. -/
 theorem on_wall_run_step (fuel : Nat) (s : State)
@@ -294,34 +532,93 @@ theorem trajectory_passed_monotonic (s : State)
         ≤ (run _ s).passed_around := ih
       _ ≤ (run (_ + 1) s).passed_around := run_succ_passed_ge _ s
 
-/- =========================================================================
-   PART V: REACHABILITY
-   =========================================================================
-   We define reachability as an inductive relation: a state is reachable
-   from another if we can get there by zero or more steps. This gives us
-   a more abstract way to reason about the state machine.
-   ========================================================================= -/
+/-! ## Part V: Reachability
+
+We define reachability as an inductive relation: a state is reachable from
+another if we can get there by zero or more steps. This gives us a more
+abstract way to reason about the state machine.
+
+**Inductive relations**: Instead of counting steps, we say "s' is reachable
+from s if s' = s, or if s' = step(s'') for some reachable s''." This captures
+the transitive closure of the step relation. -/
 
 /-- Reachable: Inductive definition of reachability.
     s' is reachable from s0 if:
     - s' = s0 (reflexive base case), or
-    - s' = step s for some reachable s (transitive step case). -/
-inductive Reachable (s0 : State) : State → Prop where
-  | refl : Reachable s0 s0
-  | step (s : State) : Reachable s0 s → Reachable s0 (step s)
+    - s' = step s for some reachable s (transitive step case).
+
+    **Why inductive?** An inductive relation is defined by its constructors.
+    To prove Reachable s0 s', you must build a proof using these constructors.
+    To use a proof of Reachable s0 s', you case-split on which constructor made it.
+
+    **Alternative view**: Reachable s0 s' means there exists a finite sequence
+    s0 → s1 → s2 → ... → s' where each arrow is one step. The inductive
+    definition captures this without explicitly mentioning sequences.
+
+    **Notation**: Reachable s0 s' is sometimes written s0 →* s' in the literature
+    (the reflexive-transitive closure of the step relation). -/
+inductive Reachable
+    (s0 : State)     -- The starting state (fixed for all constructors).
+    : State → Prop   -- Takes an ending state, returns a proposition.
+    where
+  | refl :
+    -- Base case: every state is reachable from itself (0 steps).
+    Reachable s0 s0
+  | step (s : State) :
+    -- Inductive case: if s is reachable from s0, so is step(s).
+    -- This adds one more step to the path.
+    Reachable s0 s → Reachable s0 (step s)
 
 /-- reachable_trans: Reachability is transitive.
     If s1 is reachable from s0 and s2 is reachable from s1,
-    then s2 is reachable from s0. -/
-theorem reachable_trans (s0 s1 s2 : State)
-    (h1 : Reachable s0 s1) (h2 : Reachable s1 s2) : Reachable s0 s2 := by
+    then s2 is reachable from s0.
+
+    **Why this matters**: Transitivity lets us chain reachability proofs.
+    If we know s0 →* s1 and s1 →* s2, we get s0 →* s2.
+
+    **Proof**: Induction on the proof of Reachable s1 s2.
+    - If s2 = s1 (refl): s0 →* s1 = s0 →* s2. ✓
+    - If s2 = step(s) where s1 →* s (step case): By IH, s0 →* s.
+      Then Reachable.step gives s0 →* step(s) = s0 →* s2. ✓ -/
+theorem reachable_trans
+    (s0 s1 s2 : State)             -- Three states in a chain.
+    (h1 : Reachable s0 s1)         -- s0 can reach s1.
+    (h2 : Reachable s1 s2)         -- s1 can reach s2.
+    : Reachable s0 s2              -- Therefore s0 can reach s2.
+    := by
+  -- Induct on how s2 is reachable from s1.
   induction h2 with
-  | refl => exact h1
-  | step s _ ih => exact Reachable.step s ih
+  | refl =>
+    -- Case: s2 = s1 (zero steps from s1 to s2).
+    -- We need Reachable s0 s1, which is exactly h1.
+    exact h1
+  | step s _ ih =>
+    -- Case: s2 = step(s) where Reachable s1 s.
+    -- ih : Reachable s0 s (by induction hypothesis).
+    -- We need Reachable s0 (step s).
+    -- Apply the step constructor to ih.
+    exact Reachable.step s ih
 
 /-- reachable_run: Any state reached by run is reachable.
-    This connects our fuel-based execution to the abstract reachability. -/
-theorem reachable_run (fuel : Nat) (s : State) : Reachable s (run fuel s) := by
+    This connects our fuel-based execution to the abstract reachability.
+
+    **The bridge**: We have two ways to describe execution:
+    1. run fuel s: concrete, computable, needs fuel parameter
+    2. Reachable s s': abstract, logical, no fuel needed
+
+    This theorem proves they agree: run always produces reachable states.
+
+    **Proof**: Induction on fuel.
+    - fuel = 0: run 0 s = s, and Reachable.refl gives s →* s.
+    - fuel = k+1: run (k+1) s = run k (step s).
+      By IH, step(s) →* run k (step s).
+      By Reachable.step, s →* step(s).
+      By transitivity, s →* run k (step s). -/
+theorem reachable_run
+    (fuel : Nat)                       -- Number of steps to run.
+    (s : State)                        -- Starting state.
+    : Reachable s (run fuel s)         -- The ending state is reachable from s.
+    := by
   induction fuel generalizing s with
   | zero => exact Reachable.refl
   | succ k ih =>
@@ -329,55 +626,131 @@ theorem reachable_run (fuel : Nat) (s : State) : Reachable s (run fuel s) := by
     exact reachable_trans s (step s) (run k (step s)) (Reachable.step s Reachable.refl) (ih (step s))
 
 /-- reachable_preserves_invariant: Invariant holds for all reachable states.
-    If we start satisfying the invariant, every reachable state does too. -/
-theorem reachable_preserves_invariant (s0 s : State)
-    (hinv : invariant s0) (hreach : Reachable s0 s) : invariant s := by
+    If we start satisfying the invariant, every reachable state does too.
+
+    **The power of inductive invariants**: This theorem says that if you start
+    in a "good" state (satisfying the invariant), you can NEVER reach a "bad"
+    state. The invariant is an impenetrable barrier.
+
+    **Proof**: Induction on the reachability proof.
+    - refl case: s = s0, and hinv says s0 satisfies the invariant.
+    - step case: s = step(s') where s' is reachable. By IH, s' satisfies
+      the invariant. By step_preserves_invariant, step(s') does too. -/
+theorem reachable_preserves_invariant
+    (s0 s : State)                  -- Starting and ending states.
+    (hinv : invariant s0)           -- Starting state satisfies invariant.
+    (hreach : Reachable s0 s)       -- Ending state is reachable.
+    : invariant s                   -- Therefore ending state satisfies invariant.
+    := by
+  -- Induct on how s is reachable from s0.
   induction hreach with
-  | refl => exact hinv
-  | step _ _ ih => exact step_preserves_invariant _ ih
+  | refl =>
+    -- Case: s = s0. We need invariant s0, which is hinv.
+    exact hinv
+  | step _ _ ih =>
+    -- Case: s = step(prev) where prev is reachable.
+    -- ih : invariant prev (by induction)
+    -- We need invariant (step prev).
+    exact step_preserves_invariant _ ih
 
 /-- reachable_terminal_exists: From any state, a terminal state is reachable.
-    This is another way to state termination. -/
-theorem reachable_terminal_exists (s : State)
-    : ∃ s', Reachable s s' ∧ terminal s' :=
-  ⟨run s.on_wall s, reachable_run s.on_wall s, sufficient_fuel_reaches_terminal s⟩
+    This is another way to state termination.
 
-/- =========================================================================
-   PART VI: STRING CONVERSION
-   =========================================================================
-   To generate actual verse text, we need to convert numbers to strings.
-   This section defines nat↔string conversion functions and proves they
-   are inverses (round-trip property).
-   ========================================================================= -/
+    **Existential termination**: Instead of saying "run n s is terminal," we say
+    "there EXISTS a terminal state reachable from s." This is a more abstract
+    formulation that doesn't mention fuel.
+
+    **Proof**: Witness the state (run s.on_wall s). We've already proven:
+    1. It's reachable (by reachable_run)
+    2. It's terminal (by sufficient_fuel_reaches_terminal) -/
+theorem reachable_terminal_exists
+    (s : State)                              -- For any state s...
+    : ∃ s', Reachable s s' ∧ terminal s'     -- ...there's a reachable terminal state.
+    :=
+  -- Construct the witness explicitly using angle-bracket notation.
+  -- ⟨witness, proof1, proof2⟩ proves ∃ x, P x ∧ Q x.
+  ⟨run s.on_wall s,                          -- The witness: run enough steps.
+   reachable_run s.on_wall s,                -- Proof it's reachable.
+   sufficient_fuel_reaches_terminal s⟩       -- Proof it's terminal.
+
+/-! ## Part VI: String Conversion
+
+To generate actual verse text, we need to convert numbers to strings. This
+section defines nat↔string conversion functions and proves they are inverses
+(round-trip property).
+
+**Why verify string conversion?** Bugs in number formatting are common and
+subtle (off-by-one, wrong base, missing leading zeros). By proving round-trip
+properties, we ensure our natToString and stringToNat are correct inverses. -/
 
 /-- digitToChar: Convert a single digit (0-9) to its ASCII character.
-    For inputs ≥ 10, returns '9' (but we only use this for valid digits). -/
-def digitToChar (d : Nat) : Char :=
-  match d with
-  | 0 => '0' | 1 => '1' | 2 => '2' | 3 => '3' | 4 => '4'
-  | 5 => '5' | 6 => '6' | 7 => '7' | 8 => '8' | _ => '9'
+    For inputs ≥ 10, returns '9' (but we only use this for valid digits).
 
-/-- digitToString: Convert a digit to a single-character string. -/
-def digitToString (d : Nat) : String :=
-  String.singleton (digitToChar d)
+    **ASCII encoding**: The characters '0' through '9' have consecutive ASCII
+    codes (48-57). We could compute '0'.toNat + d, but explicit matching is
+    clearer and easier to prove properties about.
+
+    **Totality**: Every Nat maps to some Char. Inputs ≥ 10 all map to '9'.
+    This makes the function total without requiring a proof that d < 10. -/
+def digitToChar
+    (d : Nat)   -- A digit value (0-9 for correct behavior).
+    : Char      -- The corresponding ASCII character.
+    := match d with
+       | 0 => '0' | 1 => '1' | 2 => '2' | 3 => '3' | 4 => '4'
+       | 5 => '5' | 6 => '6' | 7 => '7' | 8 => '8' | _ => '9'
+
+/-- digitToString: Convert a digit to a single-character string.
+
+    **Composition**: This is just digitToChar wrapped in String.singleton.
+    Separating these makes proofs cleaner—we can reason about the Char
+    separately from the String wrapper. -/
+def digitToString
+    (d : Nat)   -- A digit value.
+    : String    -- A single-character string like "7".
+    := String.singleton (digitToChar d)
 
 /-- natToStringAux: Auxiliary function for nat→string conversion.
-    Uses fuel to ensure termination; builds string right-to-left. -/
-def natToStringAux (fuel n : Nat) (acc : String) : String :=
-  match fuel with
-  | 0 => acc
-  | f + 1 =>
-    let d := n % 10        -- Rightmost digit.
-    let r := n / 10        -- Remaining digits.
-    let acc' := digitToString d ++ acc  -- Prepend digit.
-    match r with
-    | 0 => acc'            -- No more digits.
-    | _ => natToStringAux f r acc'  -- Recurse on remaining.
+    Uses fuel to ensure termination; builds string right-to-left.
+
+    **Algorithm**: Extract digits from right to left using mod 10 / div 10,
+    prepending each digit to an accumulator string.
+    - n % 10 gives the rightmost digit (ones place).
+    - n / 10 gives the remaining digits (tens place and up).
+
+    **Example**: For n = 42:
+    - First iteration: d = 2, r = 4, acc' = "2"
+    - Second iteration: d = 4, r = 0, acc' = "42"
+    - r = 0, so return "42".
+
+    **Fuel**: We use n itself as fuel (upper bound on iterations needed). -/
+def natToStringAux
+    (fuel : Nat)   -- Countdown to guarantee termination.
+    (n : Nat)      -- The number being converted.
+    (acc : String) -- Accumulated string (builds right-to-left).
+    : String       -- Final string representation.
+    := match fuel with
+       | 0 => acc    -- Out of fuel: return what we have.
+       | f + 1 =>
+         let d := n % 10                    -- Rightmost digit (ones place).
+         let r := n / 10                    -- Remaining number (tens and up).
+         let acc' := digitToString d ++ acc -- Prepend this digit to accumulator.
+         match r with
+         | 0 => acc'                        -- No more digits: we're done.
+         | _ => natToStringAux f r acc'     -- More digits: recurse.
 
 /-- natToString: Convert a natural number to its decimal string representation.
-    Special case for 0 to avoid empty string. -/
-def natToString (n : Nat) : String :=
-  match n with
+    Special case for 0 to avoid empty string.
+
+    **Why special-case zero?** Our algorithm extracts digits by repeated
+    division. For n = 0, the first d = 0 % 10 = 0, r = 0 / 10 = 0, so we'd
+    return "" if acc started empty. Special-casing avoids this.
+
+    **Fuel choice**: We pass n as fuel. Since n / 10 < n for n > 0, we have
+    enough fuel to extract all digits. (For n = 0, we special-case anyway.) -/
+def natToString
+    (n : Nat)   -- The number to convert.
+    : String    -- Its decimal string representation like "42".
+    := match n with
   | 0 => "0"
   | _ => natToStringAux n n ""
 
@@ -595,58 +968,128 @@ theorem string_neq_first_char (s1 s2 : String) (c1 c2 : Char)
   injection h2 with h2'
   exact hne h2'
 
-/- =========================================================================
-   PART VII: VERSE GENERATION
-   =========================================================================
-   We define functions to generate the actual verse text. Each verse
-   depends on the bottle count, using singular/plural grammar and
-   special handling for the final verse (0 bottles).
-   ========================================================================= -/
+/-! ## Part VII: Verse Generation
+
+We define functions to generate the actual verse text. Each verse depends on
+the bottle count, using singular/plural grammar and special handling for the
+final verse (0 bottles).
+
+**Grammar matters**: "1 bottle" vs "2 bottles" and "No more bottles" require
+careful case analysis. The verse function handles all three cases: zero (final
+verse with "Go to the store"), one (singular), and n+2 (plural). -/
 
 /-- bottleWord: Returns "bottle" (singular) or "bottles" (plural).
-    English grammar requires singular for exactly 1 bottle. -/
-def bottleWord (n : Nat) : String :=
-  match n with
-  | 1 => "bottle"
-  | _ => "bottles"
+    English grammar requires singular for exactly 1 bottle.
 
-/-- countPhrase: Generates "N bottle(s)" or "No more bottles" for count n. -/
-def countPhrase (n : Nat) : String :=
-  match n with
-  | 0 => "No more bottles"
-  | _ => natToString n ++ " " ++ bottleWord n
+    **English morphology**: Most English nouns form plurals by adding 's'.
+    We only need the singular form for exactly one bottle; everything else
+    (including zero) uses plural: "0 bottles", "1 bottle", "2 bottles".
+
+    **Note**: "No more bottles" always uses plural, handled separately. -/
+def bottleWord
+    (n : Nat)   -- The bottle count.
+    : String    -- "bottle" or "bottles".
+    := match n with
+       | 1 => "bottle"   -- Singular: exactly one.
+       | _ => "bottles"  -- Plural: zero, two, three, ...
+
+/-- countPhrase: Generates "N bottle(s)" or "No more bottles" for count n.
+
+    **Three cases**:
+    - n = 0: "No more bottles" (special phrasing for zero)
+    - n = 1: "1 bottle" (singular)
+    - n ≥ 2: "N bottles" (plural)
+
+    **Composition**: Uses natToString for the number and bottleWord for grammar. -/
+def countPhrase
+    (n : Nat)   -- The bottle count.
+    : String    -- Human-readable phrase like "42 bottles" or "No more bottles".
+    := match n with
+       | 0 => "No more bottles"                  -- Special case for zero.
+       | _ => natToString n ++ " " ++ bottleWord n  -- "N bottle(s)".
 
 /-- verse: Generate a complete verse for the song.
     start is the original bottle count (for the final verse).
-    n is the current bottle count. -/
-def verse (start n : Nat) : String :=
-  match n with
-  | 0 =>  -- Final verse: "No more bottles... Go to the store..."
-    "No more bottles of beer on the wall, no more bottles of beer. " ++
-    "Go to the store and buy some more, " ++
-    natToString start ++ " " ++ bottleWord start ++ " of beer on the wall."
-  | k + 1 =>  -- Regular verse: "N bottles... Take one down..."
-    countPhrase (k + 1) ++ " of beer on the wall, " ++
-    countPhrase (k + 1) ++ " of beer. " ++
-    "Take one down and pass it around, " ++
-    countPhrase k ++ " of beer on the wall."
+    n is the current bottle count.
+
+    **Structure of a verse**:
+    - For n > 0: "[N bottles] of beer on the wall, [N bottles] of beer.
+                  Take one down and pass it around, [N-1 bottles] of beer on the wall."
+    - For n = 0: "No more bottles of beer on the wall, no more bottles of beer.
+                  Go to the store and buy some more, [start bottles] of beer on the wall."
+
+    **The start parameter**: Only matters for verse 0, where we reference how
+    many bottles to buy to restart. For positive verses, start is ignored.
+
+    **Verb agreement**: "Take one down" is singular because we always take exactly
+    one bottle, regardless of how many remain. -/
+def verse
+    (start : Nat)  -- Original bottle count (for final verse's "buy some more").
+    (n : Nat)      -- Current bottle count (which verse to generate).
+    : String       -- The complete verse text.
+    := match n with
+       | 0 =>
+         -- Final verse: "No more bottles... Go to the store..."
+         -- References 'start' to say how many to buy.
+         "No more bottles of beer on the wall, no more bottles of beer. " ++
+         "Go to the store and buy some more, " ++
+         natToString start ++ " " ++ bottleWord start ++ " of beer on the wall."
+       | k + 1 =>
+         -- Regular verse: "N bottles... Take one down..."
+         -- Note: after taking one down, we have k bottles (one less than k+1).
+         countPhrase (k + 1) ++ " of beer on the wall, " ++
+         countPhrase (k + 1) ++ " of beer. " ++
+         "Take one down and pass it around, " ++
+         countPhrase k ++ " of beer on the wall."
 
 /-- currentVerse: Get the verse for the current state.
-    Uses starting_count and on_wall to determine the verse. -/
-def currentVerse (s : State) : String :=
-  verse s.starting_count s.on_wall
+    Uses starting_count and on_wall to determine the verse.
+
+    **State-to-verse mapping**: This connects our abstract state machine to
+    concrete verse text. The state's on_wall field determines which verse
+    we're at; starting_count is passed for the final verse. -/
+def currentVerse
+    (s : State)   -- The current state of the song.
+    : String      -- The verse corresponding to this state.
+    := verse s.starting_count s.on_wall
 
 /-- fullSongAux: Build the complete song list recursively.
-    Collects verses from count m down to 0. -/
-def fullSongAux (start n : Nat) (acc : List String) : List String :=
-  match n with
-  | 0 => acc ++ [verse start 0]
-  | k + 1 => fullSongAux start k (acc ++ [verse start (k + 1)])
+    Collects verses from count n down to 0.
+
+    **Algorithm**: We count DOWN from n to 0, appending each verse to acc.
+    The recursion goes: n, n-1, n-2, ..., 1, 0.
+    Final list order: [verse n, verse (n-1), ..., verse 1, verse 0].
+
+    **Accumulator pattern**: We build the list left-to-right using an
+    accumulator. Each recursive call appends one verse to acc. -/
+def fullSongAux
+    (start : Nat)      -- Original bottle count (passed to verse).
+    (n : Nat)          -- Current countdown value.
+    (acc : List String) -- Accumulated verses so far.
+    : List String       -- Final list of all verses.
+    := match n with
+       | 0 =>
+         -- Base case: append the final verse (verse 0) and we're done.
+         acc ++ [verse start 0]
+       | k + 1 =>
+         -- Recursive case: append verse (k+1), then recurse for verses k..0.
+         fullSongAux start k (acc ++ [verse start (k + 1)])
 
 /-- fullSong: Generate the complete list of verses for a song.
-    Returns n+1 verses for a song starting with n bottles. -/
-def fullSong (start : Nat) : List String :=
-  fullSongAux start start []
+    Returns n+1 verses for a song starting with n bottles.
+
+    **The complete song**: For a song starting with n bottles, we get:
+    - Verse n (first verse: "n bottles...")
+    - Verse n-1
+    - ...
+    - Verse 1 ("1 bottle...")
+    - Verse 0 (final verse: "No more bottles... Go to the store...")
+
+    That's n+1 verses total (from n down to 0 inclusive). -/
+def fullSong
+    (start : Nat)    -- Starting bottle count.
+    : List String    -- List of all verses in order.
+    := fullSongAux start start []  -- Start countdown from 'start', empty accumulator.
 
 -- Test verse generation.
 #eval verse 99 99  -- First verse
@@ -654,124 +1097,218 @@ def fullSong (start : Nat) : List String :=
 #eval verse 99 0   -- Final verse
 #eval (fullSong 5).length  -- Should be 6
 
-/- =========================================================================
-   PART VIII: VERSE STRUCTURE LEMMAS
-   =========================================================================
-   We prove structural properties of verses: grammar correctness,
-   length bounds, and that different counts produce different verses.
-   These support the main injectivity theorem.
-   ========================================================================= -/
+/-! ## Part VIII: Verse Structure Lemmas
 
-/-- verse_one_singular: Verse for 1 bottle uses singular "bottle". -/
-theorem verse_one_singular (start : Nat)
+We prove structural properties of verses: grammar correctness, length bounds,
+and that different counts produce different verses. These support the main
+injectivity theorem.
+
+**Building toward injectivity**: To prove verse n1 ≠ verse n2 when n1 ≠ n2, we
+need structural lemmas: verse 0 starts with 'N', positive verses start with
+digits, and we can extract the leading number from a verse. -/
+
+/-- verse_one_singular: Verse for 1 bottle uses singular "bottle".
+
+    **Grammar test**: This theorem verifies that when n = 1, we correctly
+    use "bottle" (singular) not "bottles" (plural). This is the only verse
+    where singular form appears (except in "Take one down"). -/
+theorem verse_one_singular
+    (start : Nat)  -- The starting count (ignored for verse 1).
     : verse start 1 =
       "1 bottle of beer on the wall, 1 bottle of beer. " ++
-      "Take one down and pass it around, No more bottles of beer on the wall." := by
-  rfl
+      "Take one down and pass it around, No more bottles of beer on the wall."
+    := by rfl  -- Definitional equality: Lean computes both sides and checks.
 
-/-- verse_two_plural: Verse for 2 bottles uses plural "bottles". -/
-theorem verse_two_plural (start : Nat)
+/-- verse_two_plural: Verse for 2 bottles uses plural "bottles".
+
+    **Grammar test**: This verifies plural form for n > 1. Also note that
+    after taking one down from 2, we have "1 bottle" (singular) remaining. -/
+theorem verse_two_plural
+    (start : Nat)  -- The starting count (ignored for verse 2).
     : verse start 2 =
       "2 bottles of beer on the wall, 2 bottles of beer. " ++
-      "Take one down and pass it around, 1 bottle of beer on the wall." := by
-  rfl
+      "Take one down and pass it around, 1 bottle of beer on the wall."
+    := by rfl
 
-/-- verse_99: The classic opening verse, verified by computation. -/
+/-- verse_99: The classic opening verse, verified by computation.
+
+    **The iconic first line**: "99 bottles of beer on the wall..."
+    native_decide asks Lean to compute verse 99 99 and compare strings.
+    If they match, the theorem is proven by computation. -/
 theorem verse_99
     : verse 99 99 =
       "99 bottles of beer on the wall, 99 bottles of beer. " ++
-      "Take one down and pass it around, 98 bottles of beer on the wall." := by
-  native_decide
+      "Take one down and pass it around, 98 bottles of beer on the wall."
+    := by native_decide  -- Verified by direct string computation.
 
-/-- verse_0_uses_start: The final verse references the starting count. -/
-theorem verse_0_uses_start (start : Nat)
+/-- verse_0_uses_start: The final verse references the starting count.
+
+    **The restart**: The final verse says "Go to the store and buy some more,
+    [start] bottles..." This is the ONLY verse that uses the 'start' parameter.
+    All other verses ignore it. -/
+theorem verse_0_uses_start
+    (start : Nat)  -- This actually matters for verse 0!
     : verse start 0 =
       "No more bottles of beer on the wall, no more bottles of beer. " ++
       "Go to the store and buy some more, " ++
-      natToString start ++ " " ++ bottleWord start ++ " of beer on the wall." := by
-  rfl
+      natToString start ++ " " ++ bottleWord start ++ " of beer on the wall."
+    := by rfl
 
-/-- verse_50_from_99: Verse 50 of the 99-bottle song. -/
+/-- verse_50_from_99: Verse 50 of the 99-bottle song.
+
+    **Mid-song check**: Verifies that the middle verse is generated correctly.
+    After taking one from 50, we have 49 remaining. -/
 theorem verse_50_from_99
     : verse 99 50 =
       "50 bottles of beer on the wall, 50 bottles of beer. " ++
-      "Take one down and pass it around, 49 bottles of beer on the wall." := by
-  native_decide
+      "Take one down and pass it around, 49 bottles of beer on the wall."
+    := by native_decide
 
-/-- verse_50_from_0: Verse 50 when start is 0 (edge case). -/
+/-- verse_50_from_0: Verse 50 when start is 0 (edge case).
+
+    **Edge case**: Even when start = 0 (weird!), verse 50 is still correct
+    because positive verses don't use the start parameter. -/
 theorem verse_50_from_0
     : verse 0 50 =
       "50 bottles of beer on the wall, 50 bottles of beer. " ++
-      "Take one down and pass it around, 49 bottles of beer on the wall." := by
-  native_decide
+      "Take one down and pass it around, 49 bottles of beer on the wall."
+    := by native_decide
 
-/-- verse_start_irrelevant_pos: For positive n, verse doesn't depend on start. -/
-theorem verse_start_irrelevant_pos (s1 s2 n : Nat) (h : n > 0)
-    : verse s1 n = verse s2 n := by
+/-- verse_start_irrelevant_pos: For positive n, verse doesn't depend on start.
+
+    **Key observation**: The 'start' parameter only matters for verse 0 (the
+    "go to the store" verse). For all other verses, changing start doesn't
+    change the output. This is important for injectivity proofs. -/
+theorem verse_start_irrelevant_pos
+    (s1 s2 n : Nat)     -- Two different start values, same bottle count.
+    (h : n > 0)         -- n must be positive.
+    : verse s1 n = verse s2 n  -- The verses are identical.
+    := by
   match n with
-  | 0 => omega
-  | k + 1 => rfl
+  | 0 => omega           -- n = 0 contradicts h : n > 0.
+  | k + 1 => rfl         -- For n = k + 1 > 0, verse doesn't use start.
 
-/-- fullSongAux_length: Helper lemma for song length calculation. -/
-theorem fullSongAux_length (start m : Nat) (acc : List String)
-    : (fullSongAux start m acc).length = acc.length + m + 1 := by
+/-- fullSongAux_length: Helper lemma for song length calculation.
+
+    **Accumulator analysis**: fullSongAux adds m + 1 verses to the accumulator.
+    Starting from acc with length L, we end with length L + m + 1.
+
+    **Proof**: Induction on m.
+    - m = 0: Add one verse (verse 0). Length = L + 0 + 1 = L + 1. ✓
+    - m = k + 1: Add verse (k+1) to acc, then recurse for k.
+      By IH: length = (L + 1) + k + 1 = L + (k + 1) + 1. ✓ -/
+theorem fullSongAux_length
+    (start m : Nat)          -- Starting count and countdown.
+    (acc : List String)      -- Accumulator.
+    : (fullSongAux start m acc).length = acc.length + m + 1
+    := by
   induction m generalizing acc with
-  | zero => simp [fullSongAux, List.length_append]
+  | zero =>
+    -- m = 0: fullSongAux returns acc ++ [verse start 0].
+    -- Length = acc.length + 1 = acc.length + 0 + 1. ✓
+    simp [fullSongAux, List.length_append]
   | succ k ih =>
+    -- m = k + 1: fullSongAux recurses with acc ++ [verse start (k+1)].
     simp only [fullSongAux]
-    rw [ih]
+    rw [ih]  -- Apply IH to the recursive call.
     simp [List.length_append]
-    omega
+    omega    -- Arithmetic: (L + 1) + k + 1 = L + (k + 1) + 1.
 
-/-- full_song_length: A song with n bottles has exactly n+1 verses. -/
-theorem full_song_length (n : Nat) : (fullSong n).length = n + 1 := by
-  simp [fullSong, fullSongAux_length]
+/-- full_song_length: A song with n bottles has exactly n+1 verses.
 
-/-- ninety_nine_bottles_100_verses: The classic song has exactly 100 verses. -/
-theorem ninety_nine_bottles_100_verses : (fullSong 99).length = 100 := by
-  simp [full_song_length]
+    **Counting verses**: Verses are numbered n, n-1, ..., 1, 0.
+    That's n + 1 distinct numbers, hence n + 1 verses.
+
+    **Proof**: Apply fullSongAux_length with acc = [] (length 0). -/
+theorem full_song_length
+    (n : Nat)                      -- Starting bottle count.
+    : (fullSong n).length = n + 1  -- Song has n + 1 verses.
+    := by simp [fullSong, fullSongAux_length]
+
+/-- ninety_nine_bottles_100_verses: The classic song has exactly 100 verses.
+
+    **The magic number**: 99 + 1 = 100. The song goes from verse 99 down
+    to verse 0, inclusive. That's 100 verses total. -/
+theorem ninety_nine_bottles_100_verses
+    : (fullSong 99).length = 100
+    := by simp [full_song_length]
 
 -- Quick checks of song generation.
 #eval (fullSong 99)[0]!   -- Verse 99
 #eval (fullSong 99)[98]!  -- Verse 1
 #eval (fullSong 99)[99]!  -- Verse 0
 
-/- =========================================================================
-   PART IX: LEADING NUMBER EXTRACTION
-   =========================================================================
-   To prove verse injectivity, we need to extract the leading number
-   from a verse string. These functions parse the first decimal number
-   from a string.
-   ========================================================================= -/
+/-! ## Part IX: Leading Number Extraction
 
-/-- leadingNatAux: Extract digits from the front of a character list. -/
-def leadingNatAux (s : List Char) (acc : Nat) : Nat :=
-  match s with
-  | [] => acc
-  | c :: rest =>
-    match charToDigit c with
-    | none => acc          -- Non-digit: stop parsing.
-    | some d => leadingNatAux rest (acc * 10 + d)  -- Digit: accumulate.
+To prove verse injectivity, we need to extract the leading number from a verse
+string. These functions parse the first decimal number from a string.
+
+**The strategy**: A verse for count n starts with the digits of n (e.g., "99
+bottles..."). If two verses are equal, they must have the same leading number,
+so they must have the same count. This gives us injectivity. -/
+
+/-- leadingNatAux: Extract digits from the front of a character list.
+
+    **Parsing algorithm**: Walk through characters left-to-right. For each digit,
+    multiply accumulator by 10 and add the digit value. Stop at first non-digit.
+
+    **Example**: For "42 bottles", starting with acc = 0:
+    - '4' → acc = 0 * 10 + 4 = 4
+    - '2' → acc = 4 * 10 + 2 = 42
+    - ' ' → stop, return 42
+
+    **Note**: If called with acc = d (first digit already parsed), this parses
+    the remaining digits and returns the complete number. -/
+def leadingNatAux
+    (s : List Char)   -- Remaining characters to parse.
+    (acc : Nat)       -- Accumulated value so far.
+    : Nat             -- Final parsed number.
+    := match s with
+       | [] => acc               -- No more characters: return accumulator.
+       | c :: rest =>
+         match charToDigit c with
+         | none => acc           -- Non-digit: stop parsing, return accumulator.
+         | some d =>             -- Digit: extend the number.
+           leadingNatAux rest (acc * 10 + d)  -- Shift left and add new digit.
 
 /-- leadingNat: Extract the leading natural number from a string.
-    Returns none if the string doesn't start with a digit. -/
-def leadingNat (s : String) : Option Nat :=
-  match s.toList with
-  | [] => none
-  | c :: rest =>
-    match charToDigit c with
-    | none => none         -- Doesn't start with digit.
-    | some d => some (leadingNatAux rest d)
+    Returns none if the string doesn't start with a digit.
 
-/-- isDigitChar': Predicate for ASCII digit characters. -/
-def isDigitChar' (c : Char) : Bool :=
-  match charToDigit c with
-  | some _ => true
-  | none => false
+    **Purpose**: Given a verse string like "99 bottles...", extract 99.
+    Given "No more bottles...", return none (starts with 'N', not a digit).
 
-/-- allDigits: Check if all characters in a string are digits. -/
-def allDigits (s : String) : Bool :=
-  s.toList.all isDigitChar'
+    **Why Option?** We need to distinguish "starts with 0" (some 0) from
+    "doesn't start with digit" (none). This matters for verse 0 detection. -/
+def leadingNat
+    (s : String)       -- The string to parse.
+    : Option Nat       -- some n if starts with digits spelling n, none otherwise.
+    := match s.toList with
+       | [] => none              -- Empty string: no leading number.
+       | c :: rest =>
+         match charToDigit c with
+         | none => none          -- Doesn't start with digit: return none.
+         | some d =>             -- Starts with digit d.
+           some (leadingNatAux rest d)  -- Parse remaining digits, starting from d.
+
+/-- isDigitChar': Predicate for ASCII digit characters.
+
+    **Boolean predicate**: Returns true iff c is '0'..'9'.
+    Used for string analysis (checking if strings are all-digit). -/
+def isDigitChar'
+    (c : Char)   -- Character to test.
+    : Bool       -- true if c is a digit, false otherwise.
+    := match charToDigit c with
+       | some _ => true   -- charToDigit succeeded: it's a digit.
+       | none => false    -- charToDigit failed: not a digit.
+
+/-- allDigits: Check if all characters in a string are digits.
+
+    **String validation**: Returns true iff every character in s is '0'..'9'.
+    Used to verify that natToString produces digit-only strings. -/
+def allDigits
+    (s : String)   -- String to check.
+    : Bool         -- true if all characters are digits.
+    := s.toList.all isDigitChar'  -- Check each character using List.all.
 
 /-- isDigitChar_digitToChar: digitToChar always produces a digit character. -/
 theorem isDigitChar_digitToChar (d : Nat) : isDigitChar' (digitToChar d) = true := by
@@ -1044,25 +1581,50 @@ theorem verse_first_char_pos (start n : Nat) (h : n > 0) (h2 : n ≤ 99)
     exact hc
 
 /-- verse_0_ne_pos: Verse 0 differs from all positive verses.
-    The key distinguishing feature: verse 0 starts with 'N', others with digits. -/
-theorem verse_0_ne_pos (start n : Nat) (h : n > 0) (h2 : n ≤ 99)
-    : verse start 0 ≠ verse start n := by
+    The key distinguishing feature: verse 0 starts with 'N', others with digits.
+
+    **The crucial distinction**: This theorem is half of our injectivity proof.
+    - Verse 0: "No more bottles..." → starts with 'N'
+    - Verse n (n > 0): "42 bottles..." → starts with a digit
+
+    Since 'N' is not a digit, verse 0 can never equal any positive verse.
+
+    **Proof**: Assume verse 0 = verse n for n > 0 (toward contradiction).
+    - verse_first_char_0: verse 0 starts with 'N'
+    - verse_first_char_pos: verse n starts with a digit character c
+    - If the verses are equal, their first characters are equal: 'N' = c
+    - But c is a digit and 'N' is not a digit: contradiction. -/
+theorem verse_0_ne_pos
+    (start n : Nat)          -- Fixed start, positive bottle count.
+    (h : n > 0)              -- n is positive.
+    (h2 : n ≤ 99)            -- n is in our range.
+    : verse start 0 ≠ verse start n  -- Verse 0 ≠ Verse n.
+    := by
+  -- Assume for contradiction that verse start 0 = verse start n.
   intro heq
+  -- h0: firstChar (verse start 0) = some 'N'
   have h0 := verse_first_char_0 start
+  -- Get a digit c that is the first char of verse n.
   have ⟨c, hc, hdig⟩ := verse_first_char_pos start n h h2
   simp only [firstChar] at h0 hc
+  -- Since the verses are equal, their first chars are equal.
   rw [heq] at h0
+  -- Now h0: some 'N' = firstChar (verse start n) and hc: firstChar (verse start n) = some c
   rw [h0] at hc
+  -- hc: some 'N' = some c, so 'N' = c
   injection hc with hc'
+  -- hdig says c is a digit, but c = 'N' is not a digit.
   rw [← hc'] at hdig
-  exact absurd hdig (by native_decide)
+  exact absurd hdig (by native_decide)  -- 'N' is not a digit: contradiction.
 
-/- =========================================================================
-   PART X: VERSE INJECTIVITY
-   =========================================================================
-   The main theorem: different bottle counts produce different verses.
-   This is essential for proving the song has no duplicate verses.
-   ========================================================================= -/
+/-! ## Part X: Verse Injectivity
+
+The main theorem: different bottle counts produce different verses. This is
+essential for proving the song has no duplicate verses.
+
+**The crown jewel**: `verse_inj` proves that if verse(start, n1) = verse(start, n2)
+then n1 = n2. Combined with the fact that fullSong generates verses for counts
+n, n-1, ..., 1, 0, this proves all 100 verses are distinct. -/
 
 /-- leadingNat_natToString: leadingNat correctly extracts n from natToString n.
     Proved by exhaustive computation for n ≤ 99. -/
@@ -1230,33 +1792,92 @@ theorem verse_leadingNat (start n : Nat) (h : n > 0) (h2 : n ≤ 99)
 
 /-- verse_inj: THE MAIN INJECTIVITY THEOREM.
     Different bottle counts produce different verses.
-    This is the heart of the uniqueness proof. -/
-theorem verse_inj (start n1 n2 : Nat) (h1 : n1 ≤ 99) (h2 : n2 ≤ 99)
-    (heq : verse start n1 = verse start n2) : n1 = n2 := by
+    This is the heart of the uniqueness proof.
+
+    **Why this matters**: This theorem is the foundation for proving the song
+    has no duplicate verses. If two verses are equal, their bottle counts must
+    be equal—contrapositive: different counts give different verses.
+
+    **Proof strategy**: Three cases by case split on whether n1, n2 are zero:
+    1. Both zero: trivially n1 = n2 = 0.
+    2. One zero, one positive: verse 0 starts with 'N', verse n>0 starts with
+       a digit, so they can't be equal (verse_0_ne_pos).
+    3. Both positive: extract the leading number from each verse. Since the
+       verses are equal, their leading numbers are equal, so n1 = n2.
+
+    **The key insight**: Verses are "self-describing"—the bottle count appears
+    at the start of the verse string, so we can recover it by parsing. -/
+theorem verse_inj
+    (start n1 n2 : Nat)                          -- Fixed start, two bottle counts.
+    (h1 : n1 ≤ 99) (h2 : n2 ≤ 99)                -- Both counts are in our range.
+    (heq : verse start n1 = verse start n2)      -- Assume the verses are equal.
+    : n1 = n2                                    -- Conclude the counts are equal.
+    := by
+  -- Case split on whether n1 and n2 are zero or positive.
   match n1, n2 with
-  | 0, 0 => rfl
-  | 0, m + 1 => exact absurd heq (verse_0_ne_pos start (m + 1) (by omega) h2)
-  | m + 1, 0 => exact absurd heq.symm (verse_0_ne_pos start (m + 1) (by omega) h1)
+  | 0, 0 =>
+    -- Both zero: trivially equal.
+    rfl
+  | 0, m + 1 =>
+    -- n1 = 0, n2 = m + 1 > 0.
+    -- verse 0 starts with 'N', verse (m+1) starts with a digit.
+    -- These can't be equal, contradicting heq.
+    exact absurd heq (verse_0_ne_pos start (m + 1) (by omega) h2)
+  | m + 1, 0 =>
+    -- n1 = m + 1 > 0, n2 = 0.
+    -- Symmetric to above, using heq.symm.
+    exact absurd heq.symm (verse_0_ne_pos start (m + 1) (by omega) h1)
   | m + 1, k + 1 =>
-    -- Both are positive: extract leading numbers and compare.
+    -- Both positive: n1 = m + 1, n2 = k + 1.
+    -- Extract the leading number from each verse.
     have hln1 := verse_leadingNat start (m + 1) (by omega) h1
+    -- hln1 : leadingNat (verse start (m + 1)) = some (m + 1)
     have hln2 := verse_leadingNat start (k + 1) (by omega) h2
+    -- hln2 : leadingNat (verse start (k + 1)) = some (k + 1)
+    -- Since the verses are equal, their leading numbers are equal.
     rw [heq] at hln1
+    -- hln1 : leadingNat (verse start (k + 1)) = some (m + 1)
     rw [hln1] at hln2
+    -- hln2 : some (m + 1) = some (k + 1)
+    -- Injecting through Option.some: m + 1 = k + 1.
     injection hln2
 
-/- =========================================================================
-   PART XI: NO DUPLICATE VERSES
-   =========================================================================
-   We prove that the complete song has no duplicate verses. This follows
-   from verse injectivity: each verse uniquely identifies its count.
-   ========================================================================= -/
+/-! ## Part XI: No Duplicate Verses
 
-/-- fullSongAux_pairwise: Helper for proving song has pairwise distinct verses. -/
-theorem fullSongAux_pairwise (n m : Nat) (acc : List String) (hn : n ≤ 99)
-    (hm : m ≤ n) (hacc : acc.Pairwise (· ≠ ·))
-    (hvs : ∀ v ∈ acc, ∃ k, m < k ∧ k ≤ n ∧ v = verse n k)
-    : (fullSongAux n m acc).Pairwise (· ≠ ·) := by
+We prove that the complete song has no duplicate verses. This follows from
+verse injectivity: each verse uniquely identifies its count.
+
+**Pairwise distinctness**: We prove `(fullSong n).Pairwise (· ≠ ·)`, meaning
+every pair of verses in the song is distinct. This uses verse_inj plus
+induction on the song construction. -/
+
+/-- fullSongAux_pairwise: Helper for proving song has pairwise distinct verses.
+
+    **The induction strategy**: We maintain an invariant about the accumulator:
+    1. acc already has pairwise distinct elements
+    2. Every element of acc is verse n k for some k with m < k ≤ n
+
+    As we count down from m to 0, we add verse n m to acc. By verse_inj,
+    verse n m differs from all verses with different indices, so it's distinct
+    from everything already in acc.
+
+    **Parameters**:
+    - n: the starting count (fixed throughout)
+    - m: current countdown (decreases to 0)
+    - acc: accumulated verses so far (verses n, n-1, ..., m+1)
+    - hn: n ≤ 99 (needed for verse_inj)
+    - hm: m ≤ n (countdown doesn't exceed start)
+    - hacc: acc is already pairwise distinct
+    - hvs: every verse in acc corresponds to some k with m < k ≤ n -/
+theorem fullSongAux_pairwise
+    (n m : Nat)              -- Start count and current countdown.
+    (acc : List String)      -- Accumulated verses.
+    (hn : n ≤ 99)            -- Start is in range.
+    (hm : m ≤ n)             -- Countdown hasn't exceeded start.
+    (hacc : acc.Pairwise (· ≠ ·))  -- Acc is pairwise distinct.
+    (hvs : ∀ v ∈ acc, ∃ k, m < k ∧ k ≤ n ∧ v = verse n k)  -- Acc elements are high-index verses.
+    : (fullSongAux n m acc).Pairwise (· ≠ ·)  -- Result is pairwise distinct.
+    := by
   induction m generalizing acc with
   | zero =>
     simp only [fullSongAux]
@@ -1299,40 +1920,99 @@ theorem fullSongAux_pairwise (n m : Nat) (acc : List String) (hn : n ≤ 99)
       | inr hv =>
         exact ⟨m' + 1, by omega, by omega, hv⟩
 
-/-- fullSong_pairwise: The complete song has pairwise distinct verses. -/
-theorem fullSong_pairwise (n : Nat) (h : n ≤ 99)
-    : (fullSong n).Pairwise (· ≠ ·) := by
+/-- fullSong_pairwise: The complete song has pairwise distinct verses.
+
+    **The main NoDup theorem**: This proves that all n+1 verses in fullSong n
+    are distinct. No verse appears twice. Combined with full_song_length, this
+    means the song has exactly n+1 unique verses.
+
+    **Proof**: Apply fullSongAux_pairwise with:
+    - acc = [] (empty accumulator, trivially pairwise distinct)
+    - m = n (start countdown at n)
+    - The invariant is vacuously true for empty acc -/
+theorem fullSong_pairwise
+    (n : Nat)                             -- Starting bottle count.
+    (h : n ≤ 99)                          -- Must be in our range for verse_inj.
+    : (fullSong n).Pairwise (· ≠ ·)       -- All verses are pairwise distinct.
+    := by
   unfold fullSong
+  -- Apply the helper with empty accumulator.
   apply fullSongAux_pairwise n n [] h (Nat.le_refl n) List.Pairwise.nil
+  -- Prove the invariant for empty acc: ∀ v ∈ [], ∃ k, ...
+  -- This is vacuously true since [] has no elements.
   intro v hv
-  cases hv
+  cases hv  -- hv : v ∈ [] is impossible.
 
-/-- ninety_nine_bottles_all_distinct: The 99-bottle song has 100 unique verses. -/
+/-- ninety_nine_bottles_all_distinct: The 99-bottle song has 100 unique verses.
+
+    **THE UNIQUENESS GUARANTEE**: This is the theorem that says the classic
+    99-bottle song has no repeated verses. All 100 verses (from "99 bottles"
+    down to "No more bottles") are distinct strings.
+
+    **Corollary of verse_inj**: Since different counts produce different verses,
+    and fullSong generates verses for counts 99, 98, ..., 1, 0 (all distinct
+    counts), all the verses must be distinct. -/
 theorem ninety_nine_bottles_all_distinct
-    : (fullSong 99).Pairwise (· ≠ ·) :=
-  fullSong_pairwise 99 (by omega)
+    : (fullSong 99).Pairwise (· ≠ ·)  -- All 100 verses are distinct.
+    := fullSong_pairwise 99 (by omega)  -- 99 ≤ 99.
 
-/- =========================================================================
-   PART XII: BISIMULATION AND TRAJECTORY-SONG CORRESPONDENCE
-   =========================================================================
-   We prove bisimulation-style theorems: the state machine execution
-   corresponds exactly to counting down bottles, and each step through
-   the state machine produces the verse at the corresponding position
-   in the song.
-   ========================================================================= -/
+/-! ## Part XII: Bisimulation and Trajectory-Song Correspondence
+
+We prove bisimulation-style theorems: the state machine execution corresponds
+exactly to counting down bottles, and each step through the state machine
+produces the verse at the corresponding position in the song.
+
+**Bisimulation**: Two systems are bisimilar if they "step in lockstep." Here
+we show that (1) running k steps from initial(n) gives on_wall = n - min(k,n),
+and (2) the verse at position k in fullSong matches currentVerse of the k-th
+state in the trajectory. -/
 
 /-- conservation_law: Bottles are conserved for all reachable states.
-    on_wall + passed_around always equals the starting count. -/
-theorem conservation_law (n : Nat) (s : State) (h : Reachable (initial n) s)
-    : s.on_wall + s.passed_around = n := by
+    on_wall + passed_around always equals the starting count.
+
+    **THE FUNDAMENTAL LAW OF BOTTLES**: No bottles are ever created or destroyed.
+    Every bottle that leaves the wall (on_wall decreases) becomes a passed
+    bottle (passed_around increases). The sum is constant.
+
+    **Physical interpretation**: Think of two bins: "wall" and "passed". Bottles
+    move from wall to passed, never disappearing or appearing from nowhere.
+    This is analogous to conservation of mass in physics.
+
+    **Formal statement**: For any state s reachable from initial(n), we have
+    s.on_wall + s.passed_around = n. This holds regardless of how many steps
+    we've taken—0, 50, or 99.
+
+    **Proof outline**:
+    1. By reachable_preserves_invariant, s satisfies the invariant:
+       s.on_wall + s.passed_around = s.starting_count
+    2. By induction on reachability, s.starting_count = n
+    3. Combining: s.on_wall + s.passed_around = n -/
+theorem conservation_law
+    (n : Nat)                           -- Starting bottle count.
+    (s : State)                         -- Any state in the execution.
+    (h : Reachable (initial n) s)       -- Proof that s is reachable from start.
+    : s.on_wall + s.passed_around = n   -- Bottles on wall + passed = n.
+    := by
+  -- Step 1: Get the invariant for state s.
+  -- hinv : s.on_wall + s.passed_around = s.starting_count
   have hinv := reachable_preserves_invariant (initial n) s (initial_satisfies_invariant n) h
+  -- Step 2: Prove s.starting_count = n by induction on reachability.
   have hst : s.starting_count = n := by
     induction h with
-    | refl => simp [initial]
+    | refl =>
+      -- Base case: s = initial n, so starting_count = n by definition.
+      simp [initial]
     | step prev hprev ih =>
+      -- Inductive case: s = step(prev) where prev is reachable.
+      -- By IH: prev.starting_count = n.
+      -- By step_preserves_starting_count: s.starting_count = prev.starting_count.
       have hpinv := reachable_preserves_invariant (initial n) prev
                       (initial_satisfies_invariant n) hprev
       simp [step_preserves_starting_count, ih hpinv]
+  -- Step 3: Combine hinv and hst.
+  -- hinv: on_wall + passed = starting_count
+  -- hst: starting_count = n
+  -- Therefore: on_wall + passed = n
   simp only [invariant] at hinv
   omega
 
@@ -1437,106 +2117,189 @@ theorem fullSong_nth (n k : Nat) (h : k ≤ n)
   simp
 
 /-- trajectory_verses_match: State machine trajectory matches song verses.
-    The k-th state in the trajectory produces the k-th verse of the song. -/
-theorem trajectory_verses_match (n k : Nat) (_hn : n ≤ 99) (hk : k ≤ n)
-    : currentVerse (run k (initial n)) = verse n (n - k) := by
+    The k-th state in the trajectory produces the k-th verse of the song.
+
+    **The correspondence**: After running k steps from initial(n):
+    - State has on_wall = n - k (by bisimulation)
+    - currentVerse reads verse n (n - k)
+    - fullSong n has verse n (n - k) at position k
+
+    This three-way correspondence shows the state machine and song list
+    are perfectly synchronized. -/
+theorem trajectory_verses_match
+    (n k : Nat)             -- Starting count and step count.
+    (_hn : n ≤ 99)          -- In range (for consistency, not strictly needed here).
+    (hk : k ≤ n)            -- Don't overshoot.
+    : currentVerse (run k (initial n)) = verse n (n - k)  -- k-th state → k-th verse.
+    := by
   simp only [currentVerse]
+  -- run k (initial n) has starting_count = n and on_wall = n - k.
   rw [run_preserves_starting_count, bisimulation]
   simp [initial]
+  -- After simplification, need to show verse n (n - min k n) = verse n (n - k).
+  -- Since k ≤ n, min k n = k.
   congr 1
   omega
 
 /-- trajectory_full_song_correspondence: Complete correspondence theorem.
-    For the 99-bottle song, the k-th trajectory state produces the k-th song verse. -/
-theorem trajectory_full_song_correspondence (k : Nat) (h : k ≤ 99)
-    : currentVerse (run k (initial 99)) = (fullSong 99)[k]! := by
+    For the 99-bottle song, the k-th trajectory state produces the k-th song verse.
+
+    **THE GRAND CORRESPONDENCE**: This theorem ties everything together:
+    - The state machine (run k (initial 99))
+    - The verse generator (currentVerse)
+    - The song list ((fullSong 99)[k]!)
+
+    They all agree: running k steps gives the state that produces the k-th
+    verse in the song list. This is the "bisimulation" property. -/
+theorem trajectory_full_song_correspondence
+    (k : Nat)                -- Step count (0 to 99).
+    (h : k ≤ 99)             -- Valid step count.
+    : currentVerse (run k (initial 99)) = (fullSong 99)[k]!  -- Trajectory = Song.
+    := by
+  -- First show currentVerse matches verse 99 (99 - k).
   rw [trajectory_verses_match 99 k (by omega) h]
+  -- Then show fullSong 99 at position k is verse 99 (99 - k).
   have hget := fullSong_nth 99 k h
   have hlen : k < (fullSong 99).length := by simp [full_song_length]; omega
   simp only [List.getElem!_eq_getElem?_getD, hget, Option.getD_some]
 
-/-- final_verse_is_terminal: The verse at step n is the terminal verse. -/
-theorem final_verse_is_terminal (n : Nat) (h : n ≤ 99)
-    : currentVerse (run n (initial n)) = verse n 0 := by
+/-- final_verse_is_terminal: The verse at step n is the terminal verse.
+
+    **The last verse**: After exactly n steps, the state machine reaches
+    on_wall = 0, and currentVerse produces verse n 0 (the "No more bottles"
+    verse). This is the endpoint of both the state machine and the song. -/
+theorem final_verse_is_terminal
+    (n : Nat)                -- Starting count.
+    (h : n ≤ 99)             -- In range.
+    : currentVerse (run n (initial n)) = verse n 0  -- n steps → final verse.
+    := by
   rw [trajectory_verses_match n n h (Nat.le_refl n)]
-  simp
+  simp  -- n - n = 0.
 
-/- =========================================================================
-   PART XIII: PARAMETRICITY
-   =========================================================================
-   Some theorems hold for ANY starting count n, while others require
-   n ≤ 99 for string parsing reasons. We make this distinction explicit.
-   ========================================================================= -/
+/-! ## Part XIII: Parametricity
 
--- Theorems that hold for ANY n (no bound required):
+Some theorems hold for ANY starting count n, while others require n ≤ 99 for
+string parsing reasons. We make this distinction explicit.
+
+**Why the bound?** Our string parsing lemmas use `native_decide` which requires
+concrete computation. For n > 99, we'd need 3+ digit handling. The core state
+machine theorems (termination, conservation) work for any n; only the string
+injectivity proofs need the bound. -/
+
+/-! ### Unbounded Theorems (work for any n) -/
 
 /-- general_termination: The song terminates for ANY starting count.
-    No bound on n required—the state machine always reaches terminal. -/
-theorem general_termination (n : Nat) : terminal (run n (initial n)) :=
-  sufficient_fuel_reaches_terminal (initial n)
+    No bound on n required—the state machine always reaches terminal.
+
+    **Universality**: Whether you have 99 bottles, 1000 bottles, or a googol
+    bottles, the song WILL end. This follows from well-founded recursion on
+    natural numbers—you can't count down forever. -/
+theorem general_termination
+    (n : Nat)                              -- ANY starting count.
+    : terminal (run n (initial n))         -- The song terminates.
+    := sufficient_fuel_reaches_terminal (initial n)
 
 /-- general_conservation: Conservation holds for ANY starting count.
-    Bottles are conserved regardless of how many we start with. -/
-theorem general_conservation (n : Nat) (s : State) (h : Reachable (initial n) s)
-    : s.on_wall + s.passed_around = n :=
-  conservation_law n s h
+    Bottles are conserved regardless of how many we start with.
+
+    **Physical law**: Like conservation of mass or energy, bottles neither
+    appear from nor disappear into nothing. This is a mathematical certainty,
+    not an empirical observation. -/
+theorem general_conservation
+    (n : Nat)                              -- ANY starting count.
+    (s : State)                            -- ANY reachable state.
+    (h : Reachable (initial n) s)          -- Proof s is reachable.
+    : s.on_wall + s.passed_around = n      -- Conservation holds.
+    := conservation_law n s h
 
 /-- general_invariant: The invariant holds for ANY starting count.
-    This is the most fundamental property—no bounds needed. -/
-theorem general_invariant (n fuel : Nat) : invariant (run fuel (initial n)) :=
-  run_preserves_invariant fuel (initial n) (initial_satisfies_invariant n)
+    This is the most fundamental property—no bounds needed.
+
+    **The core guarantee**: Run the state machine for any number of steps,
+    from any starting count—the invariant ALWAYS holds. -/
+theorem general_invariant
+    (n fuel : Nat)                         -- Starting count and step count.
+    : invariant (run fuel (initial n))     -- Invariant holds after fuel steps.
+    := run_preserves_invariant fuel (initial n) (initial_satisfies_invariant n)
 
 /-- general_all_bottles_passed: All bottles get passed for ANY n.
-    At termination, passed_around equals the starting count. -/
-theorem general_all_bottles_passed (n : Nat)
-    : (run n (initial n)).passed_around = n :=
-  all_bottles_passed_at_end n
+    At termination, passed_around equals the starting count.
 
--- Theorems requiring n ≤ 99 (for string parsing):
+    **Complete accounting**: When the song ends, every bottle that was on the
+    wall has been passed around exactly once. No bottle is lost or duplicated. -/
+theorem general_all_bottles_passed
+    (n : Nat)                              -- ANY starting count.
+    : (run n (initial n)).passed_around = n -- All n bottles get passed.
+    := all_bottles_passed_at_end n
+
+/-! ### Bounded Theorems (require n ≤ 99) -/
 
 /-- bounded_verse_injectivity: Different counts give different verses.
-    Requires n ≤ 99 for the leading_nat extraction to compute. -/
-theorem bounded_verse_injectivity (start n1 n2 : Nat)
-    (h1 : n1 ≤ 99) (h2 : n2 ≤ 99) (heq : verse start n1 = verse start n2) : n1 = n2 :=
-  verse_inj start n1 n2 h1 h2 heq
+    Requires n ≤ 99 for the leading_nat extraction to compute.
+
+    **The bound**: We use `native_decide` to verify that leadingNat correctly
+    extracts n from natToString n. This requires concrete computation, which
+    we've only verified for 1..99. Extending to larger n would require more
+    proof infrastructure. -/
+theorem bounded_verse_injectivity
+    (start n1 n2 : Nat)                    -- Fixed start, two counts.
+    (h1 : n1 ≤ 99) (h2 : n2 ≤ 99)          -- Both in the verified range.
+    (heq : verse start n1 = verse start n2) -- If verses are equal...
+    : n1 = n2                               -- ...counts are equal.
+    := verse_inj start n1 n2 h1 h2 heq
 
 /-- bounded_song_NoDup: The song has no duplicate verses.
-    Requires n ≤ 99 because it depends on verse injectivity. -/
-theorem bounded_song_NoDup (n : Nat) (h : n ≤ 99)
-    : (fullSong n).Pairwise (· ≠ ·) :=
-  fullSong_pairwise n h
+    Requires n ≤ 99 because it depends on verse injectivity.
 
-/- =========================================================================
-   PART XIV: THE SONG ITSELF
-   =========================================================================
-   Finally, we prove that our verified machinery produces the actual
-   song. Each theorem below is a certificate that a specific verse
-   computes to exactly the text we expect. Lean verifies each by
-   computation—no trust required.
-   ========================================================================= -/
+    **Practical implication**: For any song with ≤ 100 verses (n ≤ 99),
+    every verse is unique. You'll never hear the same verse twice. -/
+theorem bounded_song_NoDup
+    (n : Nat)                              -- Starting count.
+    (h : n ≤ 99)                           -- In the verified range.
+    : (fullSong n).Pairwise (· ≠ ·)        -- No duplicate verses.
+    := fullSong_pairwise n h
 
-/-- the_song_verse_99: The first verse of the song. -/
+/-! ## Part XIV: The Song Itself
+
+Finally, we prove that our verified machinery produces the actual song. Each
+theorem below is a certificate that a specific verse computes to exactly the
+text we expect. Lean verifies each by computation—no trust required.
+
+**Executable specifications**: Each `native_decide` proof asks Lean to compute
+the verse string and check equality. This is both a test AND a proof—if the
+computation succeeds, the theorem is true by construction. -/
+
+/-- the_song_verse_99: The first verse of the song.
+
+    **Opening act**: "99 bottles of beer on the wall, 99 bottles of beer..."
+    This is THE iconic opening line. Lean verifies it's exactly right. -/
 theorem the_song_verse_99
-    : (fullSong 99)[0]! =
+    : (fullSong 99)[0]! =                    -- Index 0 is the first verse.
       "99 bottles of beer on the wall, 99 bottles of beer. " ++
-      "Take one down and pass it around, 98 bottles of beer on the wall." := by
-  native_decide  -- Verified by computation.
+      "Take one down and pass it around, 98 bottles of beer on the wall."
+    := by native_decide  -- Verified by direct string computation.
 
-/-- the_song_verse_98: The second verse. -/
+/-- the_song_verse_98: The second verse.
+
+    **Following the pattern**: 98 bottles, take one down, 97 remain. -/
 theorem the_song_verse_98
-    : (fullSong 99)[1]! =
+    : (fullSong 99)[1]! =                    -- Index 1 is the second verse.
       "98 bottles of beer on the wall, 98 bottles of beer. " ++
-      "Take one down and pass it around, 97 bottles of beer on the wall." := by
-  native_decide
+      "Take one down and pass it around, 97 bottles of beer on the wall."
+    := by native_decide
 
-/-- the_song_verse_97: The third verse. -/
+/-- the_song_verse_97: The third verse.
+
+    **Continuing down**: The pattern continues predictably. -/
 theorem the_song_verse_97
-    : (fullSong 99)[2]! =
+    : (fullSong 99)[2]! =                    -- Index 2 is the third verse.
       "97 bottles of beer on the wall, 97 bottles of beer. " ++
-      "Take one down and pass it around, 96 bottles of beer on the wall." := by
-  native_decide
+      "Take one down and pass it around, 96 bottles of beer on the wall."
+    := by native_decide
 
-/-- the_song_verse_50: The middle of the song. -/
+/-- the_song_verse_50: The middle of the song.
+
+    **Halftime**: 50 bottles remain at index 49 (since 99 - 49 = 50). -/
 theorem the_song_verse_50
     : (fullSong 99)[49]! =
       "50 bottles of beer on the wall, 50 bottles of beer. " ++
@@ -1607,12 +2370,15 @@ theorem song_complete (n : Nat) (hn : n ≤ 99)
     simp only [List.getElem!_eq_getElem?_getD, hget, Option.getD_some]
   · exact sufficient_fuel_reaches_terminal (initial n)
 
-/- =========================================================================
-   PART XV: ADDITIONAL STRING PROPERTIES
-   =========================================================================
-   Round-trip properties for string conversion and additional helper
-   lemmas used throughout the development.
-   ========================================================================= -/
+/-! ## Part XV: Additional String Properties
+
+Round-trip properties for string conversion and additional helper lemmas used
+throughout the development.
+
+**Round-trip proofs**: We prove `stringToNat(natToString(n)) = some n`, which
+guarantees our conversion functions are correct inverses. This style of
+verification—proving that encoding and decoding are inverses—is common in
+verified serialization and parsing. -/
 
 /-- stringToNat_natToString: Round-trip property: string(nat(s)) = s.
     Proved by exhaustive computation for n ≤ 99. -/
@@ -1858,41 +2624,69 @@ theorem canonical_natToString (n : Nat) (h : n > 0) (h2 : n ≤ 99)
     - Each verse corresponds to a trajectory state
     - All verses are distinct
     - The state machine terminates
-    - All 99 bottles get passed -/
+    - All 99 bottles get passed
+
+    **THE GRAND FINALE**: This theorem bundles ALL the key properties we've
+    proven into a single statement. It serves as both a summary and a
+    certificate that our verification is complete.
+
+    **Five-part conjunction**: We prove:
+    1. `(fullSong 99).length = 100` — Exactly 100 verses (0..99 inclusive)
+    2. `∀ k, k ≤ 99 → (fullSong 99)[k]! = verse 99 (99 - k)` — Verse order correct
+    3. `(fullSong 99).Pairwise (· ≠ ·)` — All verses distinct (no duplicates)
+    4. `terminal (run 99 (initial 99))` — Song terminates (state machine halts)
+    5. `(run 99 (initial 99)).passed_around = 99` — All bottles passed
+
+    **Why bundle these?** A single theorem with all properties makes it easy
+    to see at a glance that the verification is complete. Each conjunct can
+    also be extracted separately using `.1`, `.2.1`, etc.
+
+    **Trust chain**: This theorem depends on everything we've built:
+    - State machine definitions (State, step, run)
+    - Invariant proofs (preservation, termination)
+    - String conversion (natToString, round-trip)
+    - Verse generation (verse, fullSong)
+    - Injectivity (verse_inj, NoDup) -/
 theorem song_complete_summary
-    : (fullSong 99).length = 100 ∧
-      (∀ k, k ≤ 99 → (fullSong 99)[k]! = verse 99 (99 - k)) ∧
-      (fullSong 99).Pairwise (· ≠ ·) ∧
-      terminal (run 99 (initial 99)) ∧
-      (run 99 (initial 99)).passed_around = 99 := by
-  refine ⟨ninety_nine_bottles_100_verses, ?_, ninety_nine_bottles_all_distinct,
-         song_terminates, all_bottles_passed_at_end 99⟩
+    : (fullSong 99).length = 100 ∧                           -- 100 verses
+      (∀ k, k ≤ 99 → (fullSong 99)[k]! = verse 99 (99 - k)) ∧ -- Correct order
+      (fullSong 99).Pairwise (· ≠ ·) ∧                        -- All distinct
+      terminal (run 99 (initial 99)) ∧                        -- Terminates
+      (run 99 (initial 99)).passed_around = 99                -- All passed
+    := by
+  -- Build the 5-tuple using ⟨_, _, _, _, _⟩ notation.
+  -- The second component needs a proof, so we use ?_ placeholder.
+  refine ⟨ninety_nine_bottles_100_verses,      -- (1) Length = 100
+          ?_,                                   -- (2) Verse order (prove below)
+          ninety_nine_bottles_all_distinct,     -- (3) All distinct
+          song_terminates,                      -- (4) Terminates
+          all_bottles_passed_at_end 99⟩         -- (5) All bottles passed
+  -- Prove component (2): ∀ k, k ≤ 99 → (fullSong 99)[k]! = verse 99 (99 - k)
   intro k hk
+  -- Get the k-th element of fullSong 99.
   have hget := fullSong_nth 99 k hk
+  -- Show k is a valid index.
   have hlen : k < (fullSong 99).length := by simp [full_song_length]; omega
+  -- Simplify the list access using our lemma.
   simp only [List.getElem!_eq_getElem?_getD, hget, Option.getD_some]
 
-/- =========================================================================
-   CONCLUSION
-   =========================================================================
-   We have formally verified the "99 Bottles of Beer" song:
+/-! ## Conclusion
 
-   1. TERMINATION: The song always ends (song_terminates)
-   2. CONSERVATION: Bottles are neither created nor destroyed
-      (conservation_law)
-   3. CORRECTNESS: Each verse correctly reflects the bottle count
-      (trajectory_full_song_correspondence)
-   4. UNIQUENESS: Every verse is distinct (ninety_nine_bottles_all_distinct)
-   5. COMPLETENESS: The state machine visits every verse (song_complete)
+We have formally verified the "99 Bottles of Beer" song:
 
-   This development demonstrates key verification techniques:
-     - State machine modeling
-     - Inductive invariants
-     - Well-founded recursion
-     - String manipulation with round-trip proofs
-     - Injectivity arguments
+1. **Termination**: The song always ends (`song_terminates`)
+2. **Conservation**: Bottles are neither created nor destroyed (`conservation_law`)
+3. **Correctness**: Each verse correctly reflects the bottle count (`trajectory_full_song_correspondence`)
+4. **Uniqueness**: Every verse is distinct (`ninety_nine_bottles_all_distinct`)
+5. **Completeness**: The state machine visits every verse (`song_complete`)
 
-   The familiar song provides intuition; the proofs provide certainty.
-   ========================================================================= -/
+This development demonstrates key verification techniques:
+- State machine modeling
+- Inductive invariants
+- Well-founded recursion
+- String manipulation with round-trip proofs
+- Injectivity arguments
+
+The familiar song provides intuition; the proofs provide certainty. -/
 
 end Bottles
