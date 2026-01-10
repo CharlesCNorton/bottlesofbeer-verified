@@ -405,6 +405,72 @@ theorem charToDigitToChar (d : Nat) (h : d < 10)
   | 5 => rfl | 6 => rfl | 7 => rfl | 8 => rfl | 9 => rfl
   | n + 10 => omega
 
+/-- charToDigit_some_lt: If charToDigit returns some d, then d < 10. -/
+theorem charToDigit_some_lt (c : Char) (d : Nat) (h : charToDigit c = some d) : d < 10 := by
+  simp only [charToDigit] at h
+  split at h
+  all_goals (first | (injection h with h; omega) | (simp at h))
+
+/-- digitToCharToDigit: Inverse round-trip: char→digit→char preserves digit chars.
+    If charToDigit c = some d, then digitToChar d = c.
+    Proved by first extracting that d < 10, then case analysis on d. -/
+theorem digitToCharToDigit (c : Char) (d : Nat) (h : charToDigit c = some d)
+    : digitToChar d = c := by
+  have hd := charToDigit_some_lt c d h
+  match d with
+  | 0 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 1 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 2 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 3 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 4 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 5 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 6 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 7 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 8 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | 9 => simp only [charToDigit] at h; split at h <;> simp_all [digitToChar]
+  | _ + 10 => omega
+
+/-- div10_lt: Dividing a positive number by 10 yields a smaller number.
+    Key lemma for termination arguments. -/
+theorem div10_lt (n : Nat) (h : n > 0) : n / 10 < n :=
+  Nat.div_lt_self h (by omega)
+
+/-- String.singleton_length: String.singleton always produces a length-1 string. -/
+theorem String.singleton_length (c : Char) : (String.singleton c).length = 1 := by
+  simp only [String.singleton, String.length, String.toList_push]
+  rfl
+
+/-- digitToString_length: A digit string has length 1.
+    This holds for ALL d, not just d < 10, because digitToChar maps everything ≥10 to '9'. -/
+theorem digitToString_length (d : Nat) : (digitToString d).length = 1 := by
+  simp only [digitToString]
+  exact String.singleton_length (digitToChar d)
+
+/-- natToStringAux_acc_append: Accumulator can be split via append.
+    Building with acc1++acc2 equals building with acc1 then appending acc2.
+    This is the key structural lemma for natToString. -/
+theorem natToStringAux_acc_append (f n : Nat) (acc1 acc2 : String)
+    : natToStringAux f n (acc1 ++ acc2) = natToStringAux f n acc1 ++ acc2 := by
+  induction f generalizing n acc1 with
+  | zero => rfl
+  | succ f' ih =>
+    simp only [natToStringAux]
+    match n / 10 with
+    | 0 => simp only [String.append_assoc]
+    | _ + 1 =>
+      have : digitToString (n % 10) ++ (acc1 ++ acc2) =
+             (digitToString (n % 10) ++ acc1) ++ acc2 := by
+        simp only [String.append_assoc]
+      rw [this]
+      exact ih _ (digitToString (n % 10) ++ acc1)
+
+/-- natToStringAux_acc_empty: Appending to empty acc equals appending after. -/
+theorem natToStringAux_acc_empty (f n : Nat) (acc : String)
+    : natToStringAux f n acc = natToStringAux f n "" ++ acc := by
+  calc natToStringAux f n acc
+      = natToStringAux f n ("" ++ acc) := by simp
+    _ = natToStringAux f n "" ++ acc := natToStringAux_acc_append f n "" acc
+
 /-- stringToNatAux: Auxiliary function for string→nat conversion.
     Processes characters left-to-right, accumulating the value. -/
 def stringToNatAux (s : String) (acc : Nat) : Option Nat :=
