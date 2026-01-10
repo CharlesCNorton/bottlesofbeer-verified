@@ -446,6 +446,82 @@ theorem digitToString_length (d : Nat) : (digitToString d).length = 1 := by
   simp only [digitToString]
   exact String.singleton_length (digitToChar d)
 
+/-- single_digit_length: Single digits (0-9) produce length-1 strings. -/
+theorem single_digit_length (n : Nat) (h : n < 10) : (natToString n).length = 1 := by
+  match n with
+  | 0 => native_decide | 1 => native_decide | 2 => native_decide
+  | 3 => native_decide | 4 => native_decide | 5 => native_decide
+  | 6 => native_decide | 7 => native_decide | 8 => native_decide
+  | 9 => native_decide | n + 10 => omega
+
+/-- double_digit_length: Two-digit numbers (10-99) produce length-2 strings. -/
+theorem double_digit_length (n : Nat) (h1 : 10 ≤ n) (h2 : n < 100) : (natToString n).length = 2 := by
+  match n with
+  | 0 => omega | 1 => omega | 2 => omega | 3 => omega | 4 => omega
+  | 5 => omega | 6 => omega | 7 => omega | 8 => omega | 9 => omega
+  | 10 => native_decide | 11 => native_decide | 12 => native_decide
+  | 13 => native_decide | 14 => native_decide | 15 => native_decide
+  | 16 => native_decide | 17 => native_decide | 18 => native_decide
+  | 19 => native_decide | 20 => native_decide | 21 => native_decide
+  | 22 => native_decide | 23 => native_decide | 24 => native_decide
+  | 25 => native_decide | 26 => native_decide | 27 => native_decide
+  | 28 => native_decide | 29 => native_decide | 30 => native_decide
+  | 31 => native_decide | 32 => native_decide | 33 => native_decide
+  | 34 => native_decide | 35 => native_decide | 36 => native_decide
+  | 37 => native_decide | 38 => native_decide | 39 => native_decide
+  | 40 => native_decide | 41 => native_decide | 42 => native_decide
+  | 43 => native_decide | 44 => native_decide | 45 => native_decide
+  | 46 => native_decide | 47 => native_decide | 48 => native_decide
+  | 49 => native_decide | 50 => native_decide | 51 => native_decide
+  | 52 => native_decide | 53 => native_decide | 54 => native_decide
+  | 55 => native_decide | 56 => native_decide | 57 => native_decide
+  | 58 => native_decide | 59 => native_decide | 60 => native_decide
+  | 61 => native_decide | 62 => native_decide | 63 => native_decide
+  | 64 => native_decide | 65 => native_decide | 66 => native_decide
+  | 67 => native_decide | 68 => native_decide | 69 => native_decide
+  | 70 => native_decide | 71 => native_decide | 72 => native_decide
+  | 73 => native_decide | 74 => native_decide | 75 => native_decide
+  | 76 => native_decide | 77 => native_decide | 78 => native_decide
+  | 79 => native_decide | 80 => native_decide | 81 => native_decide
+  | 82 => native_decide | 83 => native_decide | 84 => native_decide
+  | 85 => native_decide | 86 => native_decide | 87 => native_decide
+  | 88 => native_decide | 89 => native_decide | 90 => native_decide
+  | 91 => native_decide | 92 => native_decide | 93 => native_decide
+  | 94 => native_decide | 95 => native_decide | 96 => native_decide
+  | 97 => native_decide | 98 => native_decide | 99 => native_decide
+  | n + 100 => omega
+
+/-- digitToString_inj: digitToString is injective on digits 0-9.
+    Proved by exhaustive computation. -/
+theorem digitToString_inj (d1 d2 : Nat) (h1 : d1 < 10) (h2 : d2 < 10)
+    (heq : digitToString d1 = digitToString d2) : d1 = d2 := by
+  match d1, d2 with
+  | 0, 0 => rfl | 1, 1 => rfl | 2, 2 => rfl | 3, 3 => rfl | 4, 4 => rfl
+  | 5, 5 => rfl | 6, 6 => rfl | 7, 7 => rfl | 8, 8 => rfl | 9, 9 => rfl
+  | 0, 1 | 0, 2 | 0, 3 | 0, 4 | 0, 5 | 0, 6 | 0, 7 | 0, 8 | 0, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 1, 0 | 1, 2 | 1, 3 | 1, 4 | 1, 5 | 1, 6 | 1, 7 | 1, 8 | 1, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 2, 0 | 2, 1 | 2, 3 | 2, 4 | 2, 5 | 2, 6 | 2, 7 | 2, 8 | 2, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 3, 0 | 3, 1 | 3, 2 | 3, 4 | 3, 5 | 3, 6 | 3, 7 | 3, 8 | 3, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 4, 0 | 4, 1 | 4, 2 | 4, 3 | 4, 5 | 4, 6 | 4, 7 | 4, 8 | 4, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 5, 0 | 5, 1 | 5, 2 | 5, 3 | 5, 4 | 5, 6 | 5, 7 | 5, 8 | 5, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 6, 0 | 6, 1 | 6, 2 | 6, 3 | 6, 4 | 6, 5 | 6, 7 | 6, 8 | 6, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 7, 0 | 7, 1 | 7, 2 | 7, 3 | 7, 4 | 7, 5 | 7, 6 | 7, 8 | 7, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 8, 0 | 8, 1 | 8, 2 | 8, 3 | 8, 4 | 8, 5 | 8, 6 | 8, 7 | 8, 9 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 9, 0 | 9, 1 | 9, 2 | 9, 3 | 9, 4 | 9, 5 | 9, 6 | 9, 7 | 9, 8 =>
+    simp [digitToString, digitToChar, String.singleton] at heq
+  | 0, _ + 10 | 1, _ + 10 | 2, _ + 10 | 3, _ + 10 | 4, _ + 10 => omega
+  | 5, _ + 10 | 6, _ + 10 | 7, _ + 10 | 8, _ + 10 | 9, _ + 10 => omega
+  | _ + 10, _ => omega
+
 /-- natToStringAux_acc_append: Accumulator can be split via append.
     Building with acc1++acc2 equals building with acc1 then appending acc2.
     This is the key structural lemma for natToString. -/
@@ -494,6 +570,30 @@ def stringToNat (s : String) : Option Nat :=
 #eval stringToNat "0"    -- some 0
 #eval stringToNat ""     -- none
 #eval stringToNat "abc"  -- none
+
+/-- stringToNat_zero: "0" parses to 0. -/
+theorem stringToNat_zero : stringToNat "0" = some 0 := by native_decide
+
+/-- stringToNat_single: Single digit strings parse correctly. -/
+theorem stringToNat_single (d : Nat) (h : d < 10) : stringToNat (digitToString d) = some d := by
+  match d with
+  | 0 => native_decide | 1 => native_decide | 2 => native_decide
+  | 3 => native_decide | 4 => native_decide | 5 => native_decide
+  | 6 => native_decide | 7 => native_decide | 8 => native_decide
+  | 9 => native_decide | n + 10 => omega
+
+/-- stringToNatAux_empty: Empty string returns accumulator. -/
+theorem stringToNatAux_empty : stringToNatAux "" 0 = some 0 := by native_decide
+
+/-- string_neq_first_char: Strings with different first chars are not equal. -/
+theorem string_neq_first_char (s1 s2 : String) (c1 c2 : Char)
+    (h1 : s1.toList.head? = some c1) (h2 : s2.toList.head? = some c2) (hne : c1 ≠ c2)
+    : s1 ≠ s2 := by
+  intro heq
+  rw [heq] at h1
+  rw [h1] at h2
+  injection h2 with h2'
+  exact hne h2'
 
 /- =========================================================================
    PART VII: VERSE GENERATION
@@ -591,6 +691,27 @@ theorem verse_0_uses_start (start : Nat)
       natToString start ++ " " ++ bottleWord start ++ " of beer on the wall." := by
   rfl
 
+/-- verse_50_from_99: Verse 50 of the 99-bottle song. -/
+theorem verse_50_from_99
+    : verse 99 50 =
+      "50 bottles of beer on the wall, 50 bottles of beer. " ++
+      "Take one down and pass it around, 49 bottles of beer on the wall." := by
+  native_decide
+
+/-- verse_50_from_0: Verse 50 when start is 0 (edge case). -/
+theorem verse_50_from_0
+    : verse 0 50 =
+      "50 bottles of beer on the wall, 50 bottles of beer. " ++
+      "Take one down and pass it around, 49 bottles of beer on the wall." := by
+  native_decide
+
+/-- verse_start_irrelevant_pos: For positive n, verse doesn't depend on start. -/
+theorem verse_start_irrelevant_pos (s1 s2 n : Nat) (h : n > 0)
+    : verse s1 n = verse s2 n := by
+  match n with
+  | 0 => omega
+  | k + 1 => rfl
+
 /-- fullSongAux_length: Helper lemma for song length calculation. -/
 theorem fullSongAux_length (start m : Nat) (acc : List String)
     : (fullSongAux start m acc).length = acc.length + m + 1 := by
@@ -660,6 +781,33 @@ theorem isDigitChar_digitToChar (d : Nat) : isDigitChar' (digitToChar d) = true 
   | 5 => rfl | 6 => rfl | 7 => rfl | 8 => rfl | 9 => rfl
   | _ + 10 => rfl
 
+/-- isDigitChar_digitToChar_any: digitToChar produces digits even for d ≥ 10. -/
+theorem isDigitChar_digitToChar_any (d : Nat) : isDigitChar' (digitToChar d) = true :=
+  isDigitChar_digitToChar d
+
+/-- isDigit_neq_N: Digit characters are not 'N'. -/
+theorem isDigit_neq_N (c : Char) (h : isDigitChar' c = true) : c ≠ 'N' := by
+  simp only [isDigitChar'] at h
+  cases hc : charToDigit c with
+  | none => simp [hc] at h
+  | some d =>
+    intro heq
+    rw [heq] at hc
+    simp [charToDigit] at hc
+
+/-- leadingNatAux_nil: Empty list returns accumulator. -/
+theorem leadingNatAux_nil (acc : Nat) : leadingNatAux [] acc = acc := rfl
+
+/-- leadingNatAux_cons_digit: Digit extends the accumulator. -/
+theorem leadingNatAux_cons_digit (c : Char) (rest : List Char) (acc d : Nat)
+    (h : charToDigit c = some d) : leadingNatAux (c :: rest) acc = leadingNatAux rest (acc * 10 + d) := by
+  simp [leadingNatAux, h]
+
+/-- leadingNatAux_cons_nondigit: Non-digit stops parsing. -/
+theorem leadingNatAux_cons_nondigit (c : Char) (rest : List Char) (acc : Nat)
+    (h : charToDigit c = none) : leadingNatAux (c :: rest) acc = acc := by
+  simp [leadingNatAux, h]
+
 /-- allDigits_digitToString: Single-digit strings are all digits. -/
 theorem allDigits_digitToString (d : Nat) (h : d < 10)
     : allDigits (digitToString d) = true := by
@@ -668,6 +816,12 @@ theorem allDigits_digitToString (d : Nat) (h : d < 10)
   | 3 => native_decide | 4 => native_decide | 5 => native_decide
   | 6 => native_decide | 7 => native_decide | 8 => native_decide
   | 9 => native_decide | n + 10 => omega
+
+/-- allDigits_app: Concatenation of all-digit strings is all digits. -/
+theorem allDigits_app (s1 s2 : String) (h1 : allDigits s1 = true) (h2 : allDigits s2 = true)
+    : allDigits (s1 ++ s2) = true := by
+  simp only [allDigits, String.toList_append, List.all_append, Bool.and_eq_true]
+  exact ⟨h1, h2⟩
 
 /-- digitToChar_ne_N: Digit characters are never 'N'.
     This distinguishes "No more" from numeric verses. -/
